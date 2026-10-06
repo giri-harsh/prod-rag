@@ -1,18 +1,27 @@
 FROM python:3.11-slim-bookworm
 
-# Patch OS-level CVEs, then install system deps required by torch and native packages
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    gcc g++ libgomp1 \
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PORT=8080
+
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libgomp1 curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY requirements.lock .
+RUN pip install --prefer-binary -r requirements.lock
 
-# Copy requirements first so pip install is a cached layer.
-# Re-runs only when requirements.txt changes, not on every code change.
-COPY requirements-prod.txt .
-RUN pip install --no-cache-dir --prefer-binary -r requirements-prod.txt
+# Bake the FlashRank ONNX model into the image (no runtime download, no per-request load)
+RUN python -c "from flashrank import Ranker; Ranker(cache_dir='/opt/flashrank')"
 
-# Copy only the app package — everything else (evals/, ui/, DATA/, DOCS/) stays out
-COPY app/ ./app/
+COPY app ./app
+COPY gunicorn.conf.py .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+RUN useradd --system --uid 10001 --no-create-home app && mkdir -p /tmp/prom && chown -R app /opt/flashrank /tmp/prom
+USER app
+
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s --start-period=40s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:${PORT}/healthz || exit 1
+
+# api:    gunicorn -c gunicorn.conf.py app.main:app   (default)
+# worker: arq app.worker.WorkerSettings
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "app.main:app"]
