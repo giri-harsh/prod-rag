@@ -23,7 +23,7 @@ dependencies = [
   "flashrank",
   "portkey-ai",
   "nemoguardrails",
-  "redis",
+  "redis>=5,<6",  # arq 0.25 is only exercised against redis-py 5.x
   "tenacity",
   "arq",
   "prometheus-fastapi-instrumentator",

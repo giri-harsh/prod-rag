@@ -100,7 +100,7 @@ async def _index_file(vs: VectorStore, embedder, s: Settings, target: str, tenan
         for i in range(0, len(ids), s.ingest_batch_size):
             got = await vs.client.retrieve(target, ids=ids[i : i + s.ingest_batch_size], with_payload=False, with_vectors=False)
             existing.update(str(p.id) for p in got)
-    todo = [(i, c) for i, c in zip(ids, chunks) if i not in existing]
+    todo = [(i, c) for i, c in zip(ids, chunks, strict=True) if i not in existing]
     for b in range(0, len(todo), s.ingest_batch_size):
         part = todo[b : b + s.ingest_batch_size]
         vecs = await embedder.embed_texts([c for _, c in part])
@@ -109,7 +109,7 @@ async def _index_file(vs: VectorStore, embedder, s: Settings, target: str, tenan
                 id=pid, vector=v,
                 payload={"tenant_id": tenant_id, "source": source, "source_type": stype, "text": c, "file_hash": file_hash},
             )
-            for (pid, c), v in zip(part, vecs)
+            for (pid, c), v in zip(part, vecs, strict=True)
         ]
         await vs.client.upsert(target, pts, wait=True)
         rep.chunks_embedded += len(pts)

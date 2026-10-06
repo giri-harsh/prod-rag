@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import re
 from dataclasses import dataclass
 
@@ -156,4 +155,3 @@ class Guardrails:
         return r
 
 
-_ = asyncio  # (asyncio imported for type clarity of timeouts above)

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import os
 
-from prometheus_client import CollectorRegistry, Counter, generate_latest, multiprocess
 from prometheus_client import REGISTRY as _DEFAULT
+from prometheus_client import CollectorRegistry, Counter, generate_latest, multiprocess
 
 LLM_TOKENS = Counter("rag_llm_tokens_total", "LLM tokens by feature and kind", ["feature", "kind"])
 GUARDRAIL_BLOCKS = Counter("rag_guardrail_blocks_total", "Guardrail blocks", ["stage", "rail"])
