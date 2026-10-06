@@ -1,5 +1,6 @@
 """Real arq round-trip over the Redis protocol: enqueue -> worker executes the shared ingest()."""
 import os
+import sys
 import uuid
 
 import pytest
@@ -31,7 +32,8 @@ async def test_arq_enqueue_and_execute(make_app, tmp_path):
         await w.main()
         res = await job.result(timeout=5)
         assert res["files"] == 1 and res["embedded"] > 0
-        await w.close()
+        if sys.platform != "win32":  # arq's close() references SIGUSR1 (POSIX only); job already completed
+            await w.close()
         await pool.aclose()
 
 

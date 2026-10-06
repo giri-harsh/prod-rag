@@ -37,7 +37,7 @@ services:
       retries: 10
 
   qdrant:
-    image: qdrant/qdrant:v1.19.0
+    image: qdrant/qdrant:v1.19.2
     volumes: [qdrantdata:/qdrant/storage]
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333'"]
