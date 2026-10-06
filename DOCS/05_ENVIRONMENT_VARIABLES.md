@@ -1,72 +1,32 @@
-# 🔑 Environment Variables & Configuration
+# Environment Variables & Configuration
 
-The project uses a `.env` file for local development. All configuration is managed via **Pydantic Settings** in `app/config.py` for strict type safety. Copy `.env.example` to `.env` and fill in your values before running anything.
+All settings are validated at startup by `app/config.py` (pydantic-settings). Missing/invalid values fail fast with one
+readable message (e.g. `DATABASE_URL: Field required`). `APP_ENV=prod` additionally requires the three API keys.
+See `.env.example` for a template.
 
----
+| Variable | Default | Purpose |
+|---|---|---|
+| `APP_ENV` | `dev` | `dev`, `test` (MemorySaver allowed ONLY here) or `prod` |
+| `DATABASE_URL` | required | Postgres: API keys, conversation checkpoints, thread activity |
+| `REDIS_URL` | required | Rate limits, planner cache, arq job queue |
+| `QDRANT_URL` / `QDRANT_API_KEY` | required / - | Qdrant endpoint. `:memory:` allowed outside prod (tests) |
+| `QDRANT_COLLECTION` | `enterprise_rag` | Alias name; physical collections are `<alias>_v<N>` |
+| `GROQ_API_KEY`, `PORTKEY_API_KEY` | - | LLM access (guard model direct via Groq, chat via Portkey) |
+| `GROQ_SLUG`, `GROQ_SLUG_FALLBACK` | `rag`, `brag` | Portkey virtual-key slugs for primary / fallback targets |
+| `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_MODEL`, `GUARD_MODEL` | llama-3.3-70b / 3.1-8b / 3.1-8b | Models |
+| `GEMINI_API_KEY` | - | Embeddings |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `gemini-embedding-2` / `768` | GA model + explicit `output_dimensionality`; stored in collection metadata and verified at startup |
+| `LLM_TIMEOUT_S` / `EMBED_TIMEOUT_S` / `QDRANT_TIMEOUT_S` | 30 / 10 / 5 | Per-call timeouts |
+| `MAX_ATTEMPTS` | 3 | tenacity attempts (exp. backoff + jitter; 429/5xx/timeouts) |
+| `BREAKER_FAILURES` / `BREAKER_RESET_S` | 5 / 30 | Circuit breaker per upstream |
+| `LLM_CONCURRENCY` | 32 | Semaphore bounding in-flight LLM calls per worker |
+| `DEFAULT_RATE_PER_MIN` / `DEFAULT_RATE_PER_DAY` | 60 / 10000 | Defaults for new keys (stored per key in Postgres) |
+| `MAX_QUERY_CHARS` | 4000 | Query size limit (413 above) |
+| `MEMORY_TTL_DAYS` | 30 | Idle threads older than this are deleted by the nightly arq cron |
+| `INGEST_BATCH_SIZE` / `INGEST_ROOT` | 128 / `DATA` | Upsert batch size; root under which `/ingest` paths must live |
+| `KEEP_OLD_COLLECTIONS` | 1 | Previous index versions retained after a rebuild |
+| `ASSISTANT_DOMAIN` | K8s/Intel/networking | Topic policy used by the NeMo input rail prompt |
+| `LOGFIRE_TOKEN` | - | Logfire export (optional) |
+| `RAG_API_KEY` | - | Used by `ui/` and `evals/` clients (sent as `X-API-Key`) |
 
-## 🧠 LLMs
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `GROQ_API_KEY` | Primary key for Groq LLM calls (Planner + Responder nodes) | `gsk_...` |
-| `GROQ_FALLBACK_API_KEY` | Second Groq key used by Portkey as the fallback target; can be the same as primary | `gsk_...` |
-
----
-
-## 🔀 LLM Gateway
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `PORTKEY_API_KEY` | API key for Portkey — enables routing, fallback, caching, and observability across all LLM calls | `pk-...` |
-
----
-
-## 🌐 Gemini Embeddings
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `GEMINI_API_KEY` | Google Gemini API key used to generate 3072-dim embeddings via `gemini-embedding-2-preview` | `AIza...` |
-
----
-
-## 🗄️ Vector Database
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `QDRANT_API_KEY` | Qdrant Cloud access token | `xyz...` |
-| `QDRANT_CLUSTER_ENDPOINT` | Full URL of your Qdrant Cloud cluster | `https://your-cluster.cloud.qdrant.io:6333` |
-
----
-
-## 🕵️ Observability
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `LOGFIRE_TOKEN` | Pydantic Logfire token — traces every API call, parsing step, and retrieval span | `logfire_...` |
-| `LANGSMITH_API_KEY` | LangSmith token — records LangGraph node transitions, prompts, and token usage | `lsv2_...` |
-| `LANGSMITH_PROJECT` | LangSmith project name to group traces | `enterprise_rag` |
-| `LANGSMITH_TRACING` | Enable/disable LangSmith tracing | `true` |
-| `LANGSMITH_ENDPOINT` | LangSmith API endpoint | `https://api.smith.langchain.com` |
-
----
-
-## 🧪 Evals
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `JUDGE_GROQ` | Separate Groq key used exclusively by the RAGAS eval pipeline as the judge LLM. Keeping it separate ensures eval runs cannot exhaust the production key. | `gsk_...` |
-
----
-
-## 🖥️ Backend
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `BACKEND_URL` | URL the Streamlit UI uses to reach the FastAPI backend | `http://localhost:8000` |
-
----
-
-## 🔒 Security Best Practices
-1.  **Never** commit your `.env` file to Git — it is in `.gitignore`.
-2.  Use `.env.example` as the template when onboarding new developers.
-3.  Keep `JUDGE_GROQ` on a separate key so eval workloads cannot rate-limit the live app.
+`GROQ_FALLBACK_API_KEY`, `LANGSMITH_*` and `BACKEND_URL` from the old setup are no longer read by the API.

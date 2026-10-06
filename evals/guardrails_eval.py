@@ -5,6 +5,7 @@ Classifies each result as TP / TN / FP / FN and computes precision + recall.
 """
 
 
+import os
 import time
 import copy
 import requests
@@ -40,7 +41,8 @@ def run_guardrails_eval(guardrails_samples: list, progress_callback=None) -> lis
                 try:
                     resp = requests.post(
                         API_URL,
-                        json={"q": sample["input"], "thread_id": f"guardrail_eval_{i}"},
+                        json={"q": sample["input"], "session_id": f"guardrail_eval_{i}"},
+                        headers={"X-API-Key": os.getenv("RAG_API_KEY", "")},
                         timeout=30,
                     )
                     resp.raise_for_status()

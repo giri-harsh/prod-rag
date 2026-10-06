@@ -1,3 +1,10 @@
+> **Current implementation:** `app/ingestion/pipeline.py::ingest()` (shared by the CLI and the arq worker).
+> Point ids are `uuid5(tenant, source, chunk_index, content_hash)` so re-ingestion is idempotent and unchanged chunks are not re-embedded;
+> changed files have stale points removed. Upserts are batched (`INGEST_BATCH_SIZE`). Every point carries `tenant_id`
+> (keyword payload index, `is_tenant=true`), `source_type` and `source`. `--rebuild` builds `<alias>_v<N+1>`, copies other tenants'
+> points, then atomically swaps the alias (aborting without a swap if any file failed). DOCX/PPTX use python-docx/python-pptx.
+> The legacy `--wipe` flag is gone. Per-file failures are collected and the CLI exits non-zero.
+
 # 📥 Ingestion Engine: Data to Knowledge
 
 The Ingestion Engine is a modular, high-performance pipeline designed to convert raw enterprise data into a searchable vector format.

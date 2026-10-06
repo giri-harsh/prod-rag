@@ -1,3 +1,9 @@
+> **Current implementation:** `app/services/llm.py` uses `AsyncPortkey` with a fallback config (primary `@rag/llama-3.3-70b-versatile`
+> -> `@brag/llama-3.1-8b-instant`), gateway retry on 429/5xx, `request_timeout` just under the app's 30 s timeout, and a simple
+> (exact-match) cache. On top: tenacity retries (max 3, exp. backoff + jitter), a per-upstream circuit breaker, and an
+> `asyncio.Semaphore` (`LLM_CONCURRENCY`) bounding in-flight calls. Token usage is exported as `rag_llm_tokens_total`.
+> The fallback is a different (smaller) model, not a second API key.
+
 # 16 — LLM Gateway with Portkey
 
 > **One-line summary:** An LLM Gateway is a proxy layer that sits between your application and any LLM provider — adding resilience, observability, and cost control with zero changes to your business logic.

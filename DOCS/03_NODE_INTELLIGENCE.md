@@ -1,6 +1,6 @@
 # 🧠 Node Intelligence: The Agentic Brain
 
-The project uses a **Cyclic State Machine** powered by **LangGraph**. Unlike standard RAG, our agent doesn't just search; it *thinks* about whether a search is even necessary.
+The pipeline is a **LangGraph state machine** with conditional branches (`gate_and_plan -> retrieve? -> respond -> output_guard`). It is currently a *linear graph with branches, not a cyclic one*; an iterative retrieve/reflect loop is planned for a later phase. All nodes are `async` and tenant identity comes from the server-set `config["configurable"]["tenant_id"]`.
 
 ---
 

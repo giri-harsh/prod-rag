@@ -1,3 +1,13 @@
+> **Current implementation (supersedes the older design notes below where they differ).**
+> * NeMo Guardrails runs **input** (`self check input`) and **output** (`self check output`) rails on a Groq 8B guard model.
+> * Results are read from NeMo's structured `activated_rails` metadata - never by matching answer text.
+> * **Fail-closed:** if the rails fail to initialise or error/time out, `/query` returns **503** (`Retry-After`) and `/readyz` reports not-ready.
+> * A deterministic output screen (secret/key patterns, system-prompt leak, markdown-image exfil) always runs in code, independent of NeMo.
+> * Input guard runs **concurrently** with the planner (`asyncio.gather`); a block discards the planner result.
+> * Retrieved chunks are **untrusted**: regex/heuristic injection screen (`app/guardrails/injection.py`) drops or neutralises
+>   suspicious chunks, survivors are wrapped in `<retrieved_context>` delimiters and the system prompt states they are data.
+> * Dialog-style colang intents (greeting/farewell/off-topic) were removed; off-topic policy is part of the input-rail prompt.
+
 # 15 — NeMo Guardrails
 
 > **One-line summary:** Guardrails are a safety + control layer that sits between the user and the LLM — they decide what the LLM is allowed to see, say, and do.

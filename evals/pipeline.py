@@ -63,7 +63,8 @@ def run_pipeline(golden_dataset: dict, progress_callback=None) -> dict:
                 try:
                     resp = requests.post(
                         API_URL,
-                        json={"q": question, "thread_id": f"eval_run_{i}"},
+                        json={"q": question, "session_id": f"eval_run_{i}"},
+                        headers={"X-API-Key": os.getenv("RAG_API_KEY", "")},
                         timeout=REQUEST_TIMEOUT,
                     )
                     resp.raise_for_status()
