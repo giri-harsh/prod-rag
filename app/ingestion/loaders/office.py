@@ -1,23 +1,28 @@
 import logfire
-from unstructured.partition.auto import partition
 
-def parse_office(file_path: str):
-    """
-    Parses Office documents (.docx, .pptx) using the Unstructured library.
-    Unlike PDFs, these formats are structured and lightweight, so they are processed locally.
-    """
-    with logfire.span("📄 Office Document Parsing", filename=file_path):
-        try:
-            # Unstructured automatically detects if it's docx or pptx
-            elements = partition(filename=file_path)
-            full_text = "\n".join([str(el) for el in elements])
-            
-            if not full_text.strip():
-                logfire.warning(f"⚠️ Unstructured returned empty text for {file_path}")
-            else:
-                logfire.info(f"✅ Successfully parsed {len(full_text)} characters")
 
-            return full_text
-        except Exception as e:
-            logfire.error(f"❌ Office Parse Failed: {e}")
-            raise e
+def parse_office(file_path: str) -> str:
+    """Parse .docx / .pptx locally with python-docx / python-pptx (no heavy `unstructured` dependency)."""
+    with logfire.span("Office parsing", filename=file_path):
+        ext = file_path.lower().rsplit(".", 1)[-1]
+        if ext == "docx":
+            from docx import Document
+
+            d = Document(file_path)
+            parts = [p.text for p in d.paragraphs if p.text.strip()]
+            for t in d.tables:
+                for row in t.rows:
+                    parts.append(" | ".join(c.text.strip() for c in row.cells))
+            return "\n\n".join(parts)
+        if ext == "pptx":
+            from pptx import Presentation
+
+            parts = []
+            for i, slide in enumerate(Presentation(file_path).slides, 1):
+                texts = [sh.text_frame.text for sh in slide.shapes if sh.has_text_frame and sh.text_frame.text.strip()]
+                if slide.has_notes_slide and slide.notes_slide.notes_text_frame.text.strip():
+                    texts.append(slide.notes_slide.notes_text_frame.text)
+                if texts:
+                    parts.append(f"[Slide {i}]\n" + "\n".join(texts))
+            return "\n\n".join(parts)
+        raise ValueError(f"unsupported office type: {ext}")
