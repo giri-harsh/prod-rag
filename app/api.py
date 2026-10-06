@@ -10,7 +10,7 @@ from pathlib import Path
 import logfire
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
-from prometheus_client import CollectorRegistry, generate_latest
+from prometheus_client import CollectorRegistry
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, ConfigDict
 
@@ -18,8 +18,8 @@ from app.auth.keys import Principal
 from app.config import Settings, load_settings
 from app.container import Services, build_services
 from app.errors import AppError, EmbeddingConfigMismatch
-from app.observability import metrics
 from app.observability.metrics import UPSTREAM_ERRORS
+from app.observability.redact import install_logging_filter, langsmith_client, logfire_scrubbing
 from app.ratelimit import Limited
 
 SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -33,6 +33,7 @@ class QueryRequest(BaseModel):
     q: str
     session_id: str = "default"
     tenant_id: str | None = None  # optional assertion; must equal the key's tenant
+    include_contexts: bool = False  # chunk texts in the response; requires the "eval" key scope
 
 
 class IngestRequest(BaseModel):
@@ -64,12 +65,14 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
             await svc.aclose()
 
     logfire.configure(
-        send_to_logfire="if-token-present", console=False, service_name="rag-api",
+        send_to_logfire="if-token-present", console=False, service_name="rag-api", scrubbing=logfire_scrubbing(),
         token=s.logfire_token.get_secret_value() if s.logfire_token else None,
     )
+    install_logging_filter()
+    ls_client = langsmith_client() if s.langsmith_tracing else None
     app = FastAPI(title="Enterprise RAG API", version="0.2.0", lifespan=lifespan)
     app.state.metrics_registry = CollectorRegistry()
-    Instrumentator(registry=app.state.metrics_registry, excluded_handlers=["/metrics", "/healthz"]).instrument(app)
+    Instrumentator(registry=app.state.metrics_registry, excluded_handlers=["/healthz", "/readyz"]).instrument(app)
     with contextlib.suppress(Exception):
         logfire.instrument_fastapi(app, capture_headers=False)
 
@@ -143,6 +146,7 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
 
     @app.get("/readyz")
     async def readyz(request: Request):
+        """Probe-friendly: only ready/not-ready. Per-dependency detail is shown to admin keys only."""
         svc = svc_of(request)
         checks: dict[str, str] = {}
 
@@ -161,19 +165,17 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         await probe("redis", svc.redis.ping())
         await probe("qdrant", svc.vectors.ping())
         await probe("embedding_config", svc.vectors.verify_config())
-        checks["guardrails"] = "ok" if svc.guard.ready else f"fail: {svc.guard.init_error}"
+        checks["guardrails"] = "ok" if svc.guard.ready else "fail: not initialised"
         ok = all(v == "ok" for v in checks.values())
-        return JSONResponse({"ready": ok, "checks": checks}, 200 if ok else 503)
-
-    @app.get("/metrics", include_in_schema=False)
-    async def prom(request: Request):
-        import os
-
-        if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
-            body = metrics.render()
-        else:
-            body = generate_latest(request.app.state.metrics_registry) + metrics.render()
-        return Response(body, media_type="text/plain; version=0.0.4")
+        body: dict = {"ready": ok}
+        raw = request.headers.get("x-api-key")
+        if raw:
+            p = await svc.keystore.lookup(raw)
+            if p and p.is_admin:
+                body["checks"] = checks
+                if not svc.guard.ready:
+                    body["guardrails_error"] = svc.guard.init_error
+        return JSONResponse(body, 200 if ok else 503)
 
     @app.post("/query")
     async def query(body: QueryRequest, request: Request, p: Principal = Depends(limited)):
@@ -191,6 +193,8 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         if len(q) > svc.settings.max_query_chars:
             raise HTTPException(413, f"q exceeds {svc.settings.max_query_chars} characters")
 
+        if body.include_contexts and not p.has_scope("eval"):
+            raise HTTPException(403, "include_contexts requires the 'eval' scope")
         thread_id = f"{p.tenant_id}:{p.user_id}:{body.session_id}"
         async with svc.pool.connection() as conn:
             await conn.execute(
@@ -198,20 +202,29 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
                 "ON CONFLICT (thread_id) DO UPDATE SET last_active = now()",
                 (thread_id, p.tenant_id),
             )
-        out = await svc.graph.ainvoke(
-            {"messages": [{"role": "user", "content": q}]},
-            config={"configurable": {"thread_id": thread_id, "tenant_id": p.tenant_id}},
-        )
+        cfg = {"configurable": {"thread_id": thread_id, "tenant_id": p.tenant_id}}
+        if ls_client is not None:
+            from langsmith import tracing_context
+
+            with tracing_context(client=ls_client, enabled=True):
+                out = await svc.graph.ainvoke({"messages": [{"role": "user", "content": q}]}, config=cfg)
+        else:
+            out = await svc.graph.ainvoke({"messages": [{"role": "user", "content": q}]}, config=cfg)
         if not out.get("output_checked"):  # defence in depth: never return an unchecked answer
             raise AppError("output guard did not run")
-        return {
+        resp = {
             "answer": out["final_answer"],
             "session_id": body.session_id,
             "sources": out.get("sources", []),
             "thought_process": out.get("plan", []),
             "status": out.get("status"),
             "blocked": bool(out.get("blocked")),
+            "cache_hit": bool(out.get("cache_hit")),
+            "iterations": out.get("iteration", 0),
         }
+        if body.include_contexts:
+            resp["contexts"] = out.get("documents", [])
+        return resp
 
     @app.post("/ingest", status_code=202)
     async def ingest(body: IngestRequest, request: Request, p: Principal = Depends(admin)):

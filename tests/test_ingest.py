@@ -42,9 +42,9 @@ async def test_changed_file_replaces_stale_points(make_app, tmp_path):
     f = tmp_path / "a.txt"
     async with make_app() as e:
         f.write_text("old content about kubernetes " * 3)
-        await ingest(e.svc.vectors, e.embedder, e.settings, t, str(f))
+        await ingest(e.svc.vectors, e.embedder, e.svc.sparse, e.settings, t, str(f))
         f.write_text("completely new content about networking " * 3)
-        await ingest(e.svc.vectors, e.embedder, e.settings, t, str(f))
+        await ingest(e.svc.vectors, e.embedder, e.svc.sparse, e.settings, t, str(f))
         pts, _ = await e.svc.vectors.client.scroll(e.settings.qdrant_collection, limit=50, with_payload=True)
         texts = [p.payload["text"] for p in pts if p.payload["tenant_id"] == t]
         assert texts and all("networking" in x for x in texts)
@@ -54,7 +54,7 @@ async def test_upserts_are_batched(make_app, tmp_path):
     t = f"t{uuid.uuid4().hex[:6]}"
     f = tmp_path / "big.txt"
     f.write_text("\n\n".join(f"paragraph {i} " + "word " * 280 for i in range(12)))  # many ~1.4k-char chunks
-    async with make_app(ingest_batch_size=3) as e:
+    async with make_app(ingest_batch_size=3, chunk_target_tokens=100) as e:
         sizes = []
         orig = e.embedder.embed_texts
 
@@ -63,7 +63,7 @@ async def test_upserts_are_batched(make_app, tmp_path):
             return await orig(texts)
 
         e.embedder.embed_texts = spy
-        rep = await ingest(e.svc.vectors, e.embedder, e.settings, t, str(f))
+        rep = await ingest(e.svc.vectors, e.embedder, e.svc.sparse, e.settings, t, str(f))
         assert rep.chunks_total > 3 and max(sizes) <= 3 and len(sizes) > 1
 
 
@@ -103,7 +103,7 @@ async def test_failed_rebuild_does_not_swap_and_reports_errors(make_app, seed_do
 async def test_worker_job_raises_on_failures_and_succeeds_otherwise(make_app, tmp_path, settings):
     t = f"t{uuid.uuid4().hex[:6]}"
     async with make_app() as e:
-        ctx = {"vs": e.svc.vectors, "embedder": e.embedder, "s": e.settings}
+        ctx = {"vs": e.svc.vectors, "embedder": e.embedder, "sparse": e.svc.sparse, "s": e.settings}
         good = tmp_path / "g"
         good.mkdir()
         (good / "a.txt").write_text(TEXT)

@@ -16,11 +16,11 @@ import logfire
 from qdrant_client import models
 
 from app.config import Settings
-from app.ingestion.chunking.splitter import chunk_text
+from app.ingestion.chunking.splitter import split_pages
 from app.ingestion.loaders.html import parse_html
-from app.ingestion.loaders.pdf import parse_pdf
+from app.ingestion.loaders.pdf import parse_pdf_pages
 from app.ingestion.loaders.text import parse_text
-from app.services.vectorstore import VectorStore
+from app.services.vectorstore import VectorStore, version_of
 
 NAMESPACE = uuid.UUID("6f1d7c3e-2b7a-4d0e-9a53-0c1f5a2b9e11")
 SUPPORTED = {".pdf", ".html", ".htm", ".txt", ".docx", ".pptx"}
@@ -46,17 +46,17 @@ def point_id(tenant_id: str, source: str, idx: int, chunk: str) -> str:
     return str(uuid.uuid5(NAMESPACE, f"{tenant_id}|{source}|{idx}|{h}"))
 
 
-def _parse(path: Path) -> str:
+def _parse_pages(path: Path) -> list[tuple[int | None, str]]:
     ext = path.suffix.lower()
     if ext == ".pdf":
-        return parse_pdf(str(path))
+        return list(parse_pdf_pages(str(path)))
     if ext in (".html", ".htm"):
-        return parse_html(str(path))
+        return [(None, parse_html(str(path)))]
     if ext == ".txt":
-        return parse_text(str(path))
+        return [(None, parse_text(str(path)))]
     from app.ingestion.loaders.office import parse_office
 
-    return parse_office(str(path))
+    return [(None, parse_office(str(path)))]
 
 
 def _discover(root: Path, explicit_type: str | None) -> list[tuple[Path, str, str]]:
@@ -86,30 +86,39 @@ async def _copy_other_tenants(vs: VectorStore, src: str, dst: str, tenant_id: st
             return n
 
 
-async def _index_file(vs: VectorStore, embedder, s: Settings, target: str, tenant_id: str, source: str,
-                      stype: str, text: str, fresh: bool, rep: IngestReport) -> None:
-    chunks = chunk_text(text)
+async def _index_file(vs: VectorStore, embedder, sparse, s: Settings, target: str, tenant_id: str, source: str,
+                      stype: str, pages: list[tuple[int | None, str]], fresh: bool, rep: IngestReport) -> None:
+    chunks = split_pages(pages, s.chunk_target_tokens, s.chunk_overlap_ratio, s.chunk_min_tokens)
     if not chunks:
         raise ValueError("no text extracted")
-    file_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    ids = [point_id(tenant_id, source, i, c) for i, c in enumerate(chunks)]
-    rep.chunks_total += len(chunks)
+    file_hash = hashlib.sha256("\n".join(t for _, t in pages).encode("utf-8")).hexdigest()
+    version = version_of(target)
+    rows = []
+    for c in chunks:
+        chash = hashlib.sha256(c.text.encode("utf-8")).hexdigest()
+        rows.append((point_id(tenant_id, source, c.index, c.text), c, chash))
+    rep.chunks_total += len(rows)
 
     existing: set[str] = set()
     if not fresh:
+        ids = [r[0] for r in rows]
         for i in range(0, len(ids), s.ingest_batch_size):
             got = await vs.client.retrieve(target, ids=ids[i : i + s.ingest_batch_size], with_payload=False, with_vectors=False)
             existing.update(str(p.id) for p in got)
-    todo = [(i, c) for i, c in zip(ids, chunks, strict=True) if i not in existing]
+    todo = [r for r in rows if r[0] not in existing]
     for b in range(0, len(todo), s.ingest_batch_size):
         part = todo[b : b + s.ingest_batch_size]
-        vecs = await embedder.embed_texts([c for _, c in part])
+        texts = [f"{c.heading_path}\n\n{c.text}" if c.heading_path else c.text for _, c, _ in part]
+        dense = await embedder.embed_texts(texts)
+        sparse_v = await sparse.encode_docs(texts)
         pts = [
             models.PointStruct(
-                id=pid, vector=v,
-                payload={"tenant_id": tenant_id, "source": source, "source_type": stype, "text": c, "file_hash": file_hash},
+                id=pid, vector={"dense": d, "sparse": sv},
+                payload={"tenant_id": tenant_id, "source": source, "source_type": stype, "page": c.page,
+                         "heading_path": c.heading_path, "chunk_index": c.index, "content_hash": chash,
+                         "index_version": version, "file_hash": file_hash, "text": c.text},
             )
-            for (pid, c), v in zip(part, vecs, strict=True)
+            for (pid, c, chash), d, sv in zip(part, dense, sparse_v, strict=True)
         ]
         await vs.client.upsert(target, pts, wait=True)
         rep.chunks_embedded += len(pts)
@@ -128,7 +137,7 @@ async def _index_file(vs: VectorStore, embedder, s: Settings, target: str, tenan
         )
 
 
-async def ingest(vs: VectorStore, embedder, s: Settings, tenant_id: str, path: str,
+async def ingest(vs: VectorStore, embedder, sparse, s: Settings, tenant_id: str, path: str,
                  source_type: str | None = None, rebuild: bool = False) -> IngestReport:
     rep = IngestReport(tenant_id)
     root = Path(path)
@@ -153,10 +162,10 @@ async def ingest(vs: VectorStore, embedder, s: Settings, tenant_id: str, path: s
 
         for f, source, stype in _discover(root, source_type):
             try:
-                text = await asyncio.to_thread(_parse, f)
-                if not text.strip():
+                pages = await asyncio.to_thread(_parse_pages, f)
+                if not any(t.strip() for _, t in pages):
                     raise ValueError("no text extracted")
-                await _index_file(vs, embedder, s, target, tenant_id, source, stype, text, fresh, rep)
+                await _index_file(vs, embedder, sparse, s, target, tenant_id, source, stype, pages, fresh, rep)
                 rep.files_ok += 1
             except Exception as e:  # collect, keep going, report at the end
                 logfire.error("file failed", file=source, error=str(e))

@@ -22,7 +22,7 @@ async def test_arq_enqueue_and_execute(make_app, tmp_path):
     async with make_app() as e:
         pool = await create_pool(RedisSettings.from_dsn(redis_url))
         job = await pool.enqueue_job("ingest_job", t, str(d), None, False)
-        ctx_extra = {"vs": e.svc.vectors, "embedder": e.embedder, "s": e.settings}
+        ctx_extra = {"vs": e.svc.vectors, "embedder": e.embedder, "sparse": e.svc.sparse, "s": e.settings}
 
         async def startup(ctx):
             ctx.update(ctx_extra)

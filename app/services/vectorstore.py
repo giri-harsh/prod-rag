@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 
 import logfire
@@ -14,6 +15,11 @@ from app.resilience import Breakers, call_upstream
 _VER = re.compile(r"_v(\d+)$")
 
 
+def version_of(collection: str) -> int:
+    m = _VER.search(collection)
+    return int(m.group(1)) if m else 0
+
+
 def make_client(s: Settings) -> AsyncQdrantClient:
     if s.qdrant_url == ":memory:":
         return AsyncQdrantClient(location=":memory:")
@@ -24,20 +30,36 @@ def make_client(s: Settings) -> AsyncQdrantClient:
     )
 
 
+SCHEMA = "hybrid-v1"  # named vectors: dense + sparse(IDF)
+
+
 @dataclass
 class Hit:
     text: str
     source: str
     score: float
+    page: int | None = None
+    heading_path: str = ""
 
 
 class VectorStore:
     def __init__(self, client: AsyncQdrantClient, s: Settings, breakers: Breakers):
         self.client, self.s, self._breaker = client, s, breakers["qdrant"]
         self.alias = s.qdrant_collection
+        self._ver_cache: tuple[float, int] | None = None
 
     def _meta(self) -> dict:
-        return {"embedding_model": self.s.embedding_model, "embedding_dim": self.s.embedding_dim}
+        return {"embedding_model": self.s.embedding_model, "embedding_dim": self.s.embedding_dim, "schema": SCHEMA}
+
+    async def active_version(self) -> int:
+        """Version number of the live collection (cached ~10s so a rebuild is picked up quickly)."""
+        now = time.monotonic()
+        if self._ver_cache and now - self._ver_cache[0] < 10:
+            return self._ver_cache[1]
+        cur = await self.resolve_alias()
+        v = int(_VER.search(cur).group(1)) if cur and _VER.search(cur) else 0
+        self._ver_cache = (now, v)
+        return v
 
     async def _q(self, coro_fn):
         return await call_upstream(
@@ -58,7 +80,8 @@ class VectorStore:
         name = f"{self.alias}_v{version}"
         await self.client.create_collection(
             collection_name=name,
-            vectors_config=models.VectorParams(size=self.s.embedding_dim, distance=models.Distance.COSINE),
+            vectors_config={"dense": models.VectorParams(size=self.s.embedding_dim, distance=models.Distance.COSINE)},
+            sparse_vectors_config={"sparse": models.SparseVectorParams(modifier=models.Modifier.IDF)},
             metadata=self._meta(),
         )
         await self.client.create_payload_index(
@@ -66,6 +89,7 @@ class VectorStore:
         )
         await self.client.create_payload_index(name, "source_type", field_schema=models.PayloadSchemaType.KEYWORD)
         await self.client.create_payload_index(name, "source", field_schema=models.PayloadSchemaType.KEYWORD)
+        await self.client.create_payload_index(name, "file_hash", field_schema=models.PayloadSchemaType.KEYWORD)
         return name
 
     async def swap_alias(self, new_collection: str) -> None:
@@ -78,6 +102,7 @@ class VectorStore:
             )
         )
         await self.client.update_collection_aliases(change_aliases_operations=ops)  # applied atomically
+        self._ver_cache = None
 
     async def ensure_active(self) -> str:
         """Return the active physical collection, creating v1 + alias on first run."""
@@ -102,29 +127,41 @@ class VectorStore:
             return  # empty system: first ingestion creates the collection with the configured model
         info = await self.client.get_collection(current)
         vec = info.config.params.vectors
+        vec = vec.get("dense") if isinstance(vec, dict) else vec
         dim = vec.size if hasattr(vec, "size") else None
         meta = getattr(info.config, "metadata", None) or {}
         want = self._meta()
-        if dim != want["embedding_dim"] or meta.get("embedding_model") != want["embedding_model"] or meta.get("embedding_dim") != want["embedding_dim"]:
+        if dim != want["embedding_dim"] or meta.get("embedding_model") != want["embedding_model"] or meta.get("embedding_dim") != want["embedding_dim"] or meta.get("schema") != SCHEMA:
             raise EmbeddingConfigMismatch(
-                f"Index '{current}' was built with model={meta.get('embedding_model')} dim={meta.get('embedding_dim') or dim}, "
+                f"Index '{current}' was built with model={meta.get('embedding_model')} dim={meta.get('embedding_dim') or dim} schema={meta.get('schema')}, "
                 f"but config says model={want['embedding_model']} dim={want['embedding_dim']}. Rebuild the index (--rebuild) or fix config."
             )
 
     # ---- search -----------------------------------------------------------------------------
-    async def search(self, tenant_id: str, vector: list[float], limit: int) -> list[Hit]:
+    async def search(self, tenant_id: str, dense: list[float], sparse: models.SparseVector,
+                     prefetch_k: int, fused_k: int) -> list[Hit]:
+        """Hybrid: dense + sparse prefetch (tenant-filtered) -> server-side RRF fusion."""
         flt = models.Filter(must=[models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id))])
         try:
             resp = await self._q(
                 lambda: self.client.query_points(
-                    collection_name=self.alias, query=vector, query_filter=flt, limit=limit, with_payload=True
+                    collection_name=self.alias,
+                    prefetch=[
+                        models.Prefetch(query=dense, using="dense", filter=flt, limit=prefetch_k),
+                        models.Prefetch(query=sparse, using="sparse", filter=flt, limit=prefetch_k),
+                    ],
+                    query=models.FusionQuery(fusion=models.Fusion.RRF),
+                    query_filter=flt,
+                    limit=fused_k,
+                    with_payload=True,
                 )
             )
         except Exception as e:
             logfire.error("qdrant search failed", error=str(e))
             raise RetrievalUnavailable(str(e)) from e
         return [
-            Hit(p.payload.get("text", ""), p.payload.get("source", "unknown"), p.score)
+            Hit(p.payload.get("text", ""), p.payload.get("source", "unknown"), p.score,
+                p.payload.get("page"), p.payload.get("heading_path", ""))
             for p in resp.points
             if p.payload and p.payload.get("tenant_id") == tenant_id  # defence in depth
         ]

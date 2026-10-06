@@ -12,7 +12,7 @@ from psycopg_pool import AsyncConnectionPool
 from redis import asyncio as aioredis
 
 from app.agents.graph import build_graph
-from app.auth.keys import KeyStore
+from app.auth.keys import KeyStore, TenantConfig
 from app.config import Settings
 from app.errors import EmbeddingConfigMismatch
 from app.guardrails import Guardrails
@@ -30,6 +30,9 @@ class Services:
     keystore: KeyStore
     limiter: RateLimiter
     vectors: VectorStore
+    sparse: Any
+    semcache: Any
+    tenant_config: TenantConfig
     embedder: Any
     llm: Any
     reranker: Any
@@ -80,20 +83,39 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
     except Exception as e:  # Qdrant merely unreachable: boot, report via /readyz
         logfire.warn("qdrant not reachable at startup", error=str(e))
 
+    from app.services.embedding_cache import CachedEmbedder
+    from app.services.semcache import SemanticCache
+    from app.services.sparse import make_sparse_encoder
+
+    loadtest = s.app_env == "loadtest"
     if "embedder" in ov:
         embedder = ov["embedder"]
+    elif loadtest:
+        from app.loadtest import LoadEmbedder
+
+        embedder = LoadEmbedder(s)
     else:
         from app.services.embedding import GeminiEmbedder
 
         embedder = GeminiEmbedder(s, breakers)
+    embedder = CachedEmbedder(embedder, redis, s.embed_cache_ttl_s)
     if "llm" in ov:
         llm = ov["llm"]
+    elif loadtest:
+        from app.loadtest import LoadLLM
+
+        llm = LoadLLM(s)
     else:
         from app.services.llm import PortkeyLLM
 
         llm = PortkeyLLM(s, breakers)
+    sparse = ov.get("sparse") or make_sparse_encoder(s.sparse_backend)
     if "reranker" in ov:
         reranker = ov["reranker"]
+    elif loadtest and not ov.get("real_reranker"):
+        from app.services.reranker import NoopReranker
+
+        reranker = NoopReranker()
     else:
         from app.services.reranker import FlashRankReranker, NoopReranker
 
@@ -105,7 +127,12 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
 
     guard = ov.get("guard") or Guardrails(s, breakers)
     if not guard.ready:
-        await asyncio.to_thread(guard.initialize, ov.get("guard_llm"))
+        guard_llm = ov.get("guard_llm")
+        if guard_llm is None and loadtest:
+            from app.loadtest import LoadGuardLLM
+
+            guard_llm = LoadGuardLLM(s)
+        await asyncio.to_thread(guard.initialize, guard_llm)
 
     if s.app_env == "test":
         checkpointer = MemorySaver()  # the ONLY place MemorySaver is allowed
@@ -116,7 +143,8 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
 
     svc = Services(
         settings=s, breakers=breakers, pool=pool, redis=redis, keystore=KeyStore(pool, ov.get("key_cache_ttl", 10.0)),
-        limiter=RateLimiter(redis), vectors=vectors, embedder=embedder, llm=llm, reranker=reranker,
+        limiter=RateLimiter(redis, workers=s.web_concurrency), vectors=vectors, sparse=sparse, semcache=SemanticCache(qclient, s),
+        tenant_config=TenantConfig(pool, s.assistant_domain, s.tenant_config_ttl_s), embedder=embedder, llm=llm, reranker=reranker,
         guard=guard, checkpointer=checkpointer, _closers=closers,
     )
     svc.graph = build_graph(svc, checkpointer)

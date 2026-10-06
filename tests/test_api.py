@@ -181,7 +181,10 @@ async def test_guardrail_init_failure_fails_closed_503(make_app, new_key, monkey
         assert r.status_code == 503 and "Retry-After" in r.headers
         assert e.llm.calls == [] or e.llm.of("responder") == []  # nothing was answered
         rz = await e.client.get("/readyz")
-        assert rz.status_code == 503 and "guardrails" in rz.json()["checks"]
+        assert rz.status_code == 503 and rz.json() == {"ready": False}  # no internals without an admin key
+        _, ak = new_key(admin=True)
+        rz = await e.client.get("/readyz", headers=H(ak))
+        assert "guardrails" in rz.json()["checks"]
 
 
 async def test_guardrail_runtime_error_fails_closed(make_app, new_key):
@@ -257,14 +260,14 @@ async def test_embedding_failure_is_503(make_app, new_key):
     emb = FakeEmbedder()
     async with make_app(embedder=emb) as e:
         emb.fail = RuntimeError("embed down")
-        r = await e.client.post("/query", json=q("explain kubernetes pods"), headers=H(k))
+        r = await e.client.post("/query", json=q(f"explain kubernetes pods {uuid.uuid4().hex}"), headers=H(k))
         assert r.status_code == 503
 
 
 async def test_embedding_dim_mismatch_refuses_startup(make_app, new_key, seed_docs):
     qc = AsyncQdrantClient(":memory:")
     t, _ = new_key()
-    async with make_app(qdrant_client=qc, qdrant_collection="mm_" + uuid.uuid4().hex[:6]) as e:
+    async with make_app(qdrant_client=qc, qdrant_collection="itmm_" + uuid.uuid4().hex[:6]) as e:
         await seed_docs(e, t, {"a.txt": K8S})
         name = e.settings.qdrant_collection
         with pytest.raises(EmbeddingConfigMismatch):
@@ -309,21 +312,25 @@ async def test_planner_decisions_cached_per_tenant(make_app, new_key, seed_docs)
 
 
 # ----------------------------------------------------------------------------- ops (P1-6)
-async def test_health_and_ready(make_app):
+async def test_health_and_ready(make_app, new_key):
     async with make_app() as e:
         assert (await e.client.get("/healthz")).json() == {"status": "ok"}
         r = await e.client.get("/readyz")
-        assert r.status_code == 200 and r.json()["ready"] and set(r.json()["checks"]) >= {"postgres", "redis", "qdrant", "embedding_config", "guardrails"}
+        assert r.status_code == 200 and r.json() == {"ready": True}
+        _, ak = new_key(admin=True)
+        r = await e.client.get("/readyz", headers=H(ak))
+        assert set(r.json()["checks"]) >= {"postgres", "redis", "qdrant", "embedding_config", "guardrails"}
 
 
-async def test_readyz_503_when_redis_down(make_app):
+async def test_readyz_503_when_redis_down(make_app, new_key):
     class Dead:
         async def ping(self):
             raise ConnectionError("redis gone")
 
     async with make_app() as e:
         e.svc.redis = Dead()
-        r = await e.client.get("/readyz")
+        _, ak = new_key(admin=True)
+        r = await e.client.get("/readyz", headers=H(ak))
         assert r.status_code == 503 and r.json()["checks"]["redis"].startswith("fail")
         assert (await e.client.get("/healthz")).status_code == 200  # liveness unaffected
 
@@ -334,8 +341,10 @@ async def test_request_id_and_metrics(make_app, new_key):
         r = await e.client.post("/query", json=q("bad"), headers={**H(k), "X-Request-ID": "req-123"})
         assert r.headers["X-Request-ID"] == "req-123"
         assert (await e.client.get("/healthz")).headers["X-Request-ID"]
-        m = (await e.client.get("/metrics")).text
-        assert "rag_guardrail_blocks_total" in m and "http_request" in m
+        assert (await e.client.get("/metrics")).status_code == 404  # not exposed on the public port
+        from prometheus_client import REGISTRY, generate_latest
+
+        assert b"rag_guardrail_blocks_total" in generate_latest(REGISTRY)
 
 
 async def test_unhandled_error_is_500_json_not_200(make_app, new_key):

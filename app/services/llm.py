@@ -19,7 +19,15 @@ class LLMResult:
 
 
 class ChatLLM(Protocol):
-    async def complete(self, system: str, user: str, *, feature: str, temperature: float = 0.0) -> LLMResult: ...
+    async def complete(self, system: str, user: str, *, feature: str, temperature: float = 0.0, fast: bool = False) -> LLMResult: ...
+
+
+def fast_gateway_config(s: Settings) -> dict:
+    """Single cheap-model target (query rewriting): no fallback chain needed."""
+    cfg = gateway_config(s)
+    cfg["strategy"] = {"mode": "single"}
+    cfg["targets"] = cfg["targets"][1:]
+    return cfg
 
 
 def gateway_config(s: Settings) -> dict:
@@ -45,12 +53,17 @@ class PortkeyLLM:
             api_key=s.portkey_api_key.get_secret_value() if s.portkey_api_key else None,
             config=gateway_config(s),
         )
+        self._fast = AsyncPortkey(
+            api_key=s.portkey_api_key.get_secret_value() if s.portkey_api_key else None,
+            config=fast_gateway_config(s),
+        )
 
-    async def complete(self, system: str, user: str, *, feature: str, temperature: float = 0.0) -> LLMResult:
+    async def complete(self, system: str, user: str, *, feature: str, temperature: float = 0.0, fast: bool = False) -> LLMResult:
         msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
         async def _call():
-            return await self._client.chat.completions.create(messages=msgs, temperature=temperature)
+            client = self._fast if fast else self._client
+            return await client.chat.completions.create(messages=msgs, temperature=temperature)
 
         async with self._sem:
             resp = await call_upstream(

@@ -12,6 +12,8 @@ from app.config import load_settings
 from app.ingestion.pipeline import ingest
 from app.resilience import Breakers
 from app.services.embedding import GeminiEmbedder
+from app.services.embedding_cache import CachedEmbedder
+from app.services.sparse import make_sparse_encoder
 from app.services.vectorstore import VectorStore, make_client
 
 
@@ -21,7 +23,14 @@ async def _run(a) -> int:
     client = make_client(s)
     try:
         vs = VectorStore(client, s, b)
-        rep = await ingest(vs, GeminiEmbedder(s, b), s, a.tenant, a.path, a.source_type, a.rebuild)
+        from redis import asyncio as aioredis
+
+        r = aioredis.from_url(s.redis_url)
+        try:
+            emb = CachedEmbedder(GeminiEmbedder(s, b), r, s.embed_cache_ttl_s)
+            rep = await ingest(vs, emb, make_sparse_encoder(s.sparse_backend), s, a.tenant, a.path, a.source_type, a.rebuild)
+        finally:
+            await r.aclose()
     finally:
         await client.close()
     print(f"collection={rep.collection} files_ok={rep.files_ok} chunks={rep.chunks_total} "

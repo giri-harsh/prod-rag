@@ -21,18 +21,29 @@ async def startup(ctx):
     ctx["s"] = s
     ctx["client"] = make_client(s)
     ctx["vs"] = VectorStore(ctx["client"], s, b)
+    from redis import asyncio as aioredis
+
+    from app.services.semcache import SemanticCache
+    from app.services.sparse import make_sparse_encoder
+
+    ctx["redis"] = aioredis.from_url(s.redis_url)
+    ctx["semcache"] = SemanticCache(ctx["client"], s)
     if "embedder" not in ctx:  # tests pre-seed a fake
         from app.services.embedding import GeminiEmbedder
+        from app.services.embedding_cache import CachedEmbedder
 
-        ctx["embedder"] = GeminiEmbedder(s, b)
+        ctx["embedder"] = CachedEmbedder(GeminiEmbedder(s, b), ctx["redis"], s.embed_cache_ttl_s)
+    if "sparse" not in ctx:
+        ctx["sparse"] = make_sparse_encoder(s.sparse_backend)
 
 
 async def shutdown(ctx):
     await ctx["client"].close()
+    await ctx["redis"].aclose()
 
 
 async def ingest_job(ctx, tenant_id: str, path: str, source_type: str | None = None, rebuild: bool = False):
-    rep = await ingest(ctx["vs"], ctx["embedder"], ctx["s"], tenant_id, path, source_type, rebuild)
+    rep = await ingest(ctx["vs"], ctx["embedder"], ctx["sparse"], ctx["s"], tenant_id, path, source_type, rebuild)
     if not rep.ok:
         raise AppError(f"ingestion finished with {len(rep.failed)} failed files: {rep.failed[:5]}")
     return {"files": rep.files_ok, "chunks": rep.chunks_total, "embedded": rep.chunks_embedded}
@@ -43,9 +54,13 @@ async def cleanup_job(ctx):
     return await asyncio.to_thread(cleanup_idle_threads_sync, s.database_url, s.memory_ttl_days)
 
 
+async def semcache_cleanup(ctx):
+    await ctx["semcache"].purge_expired()
+
+
 class WorkerSettings:
     functions = [ingest_job]
-    cron_jobs = [cron(cleanup_job, hour={3}, minute={17})]
+    cron_jobs = [cron(cleanup_job, hour={3}, minute={17}), cron(semcache_cleanup, minute={5, 35})]
     on_startup = startup
     on_shutdown = shutdown
     max_tries = 1

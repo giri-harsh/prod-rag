@@ -36,5 +36,5 @@ if __name__ == "__main__":
     from app.config import load_settings
 
     s = load_settings()
-    print("applied:", migrate(s.database_url) or "nothing (up to date)")
+    print("applied:", migrate(s.direct_database_url or s.database_url) or "nothing (up to date)")
     sys.exit(0)

@@ -19,3 +19,9 @@ def child_exit(server, worker):  # keep prometheus multiprocess files tidy
     from prometheus_client import multiprocess
 
     multiprocess.mark_process_dead(worker.pid)
+
+
+def on_starting(server):  # master process: serve aggregated metrics on the internal port
+    from app.metrics_server import start
+
+    start(int(os.environ.get("METRICS_PORT", "9100")))

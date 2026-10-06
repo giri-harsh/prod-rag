@@ -15,7 +15,7 @@ class ConfigError(RuntimeError):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
-    app_env: Literal["dev", "test", "prod"] = "dev"
+    app_env: Literal["dev", "test", "loadtest", "prod"] = "dev"
     log_level: str = "INFO"
 
     # --- infrastructure ---
@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(..., description="redis://host:6379/0")
     qdrant_url: str = Field(..., description="http(s)://host:6333, or ':memory:' in tests")
     qdrant_api_key: SecretStr | None = None
+    direct_database_url: str | None = None  # session-mode URL for migrations when DATABASE_URL points at pgbouncer
     qdrant_collection: str = "enterprise_rag"  # ALIAS name; physical collections are <alias>_v<N>
 
     # --- LLM / gateway ---
@@ -52,13 +53,36 @@ class Settings(BaseSettings):
     default_rate_per_min: int = 60
     default_rate_per_day: int = 10_000
     max_query_chars: int = 4000
-    retrieval_candidates: int = 15
-    retrieval_top_n: int = 5
+    # --- retrieval (hybrid dense + sparse -> RRF -> rerank -> grade) ---
+    prefetch_k: int = Field(40, ge=1)  # per-branch candidates (dense and sparse)
+    fused_k: int = Field(20, ge=1)  # after server-side RRF fusion
+    final_k: int = Field(5, ge=1)  # after rerank, sent to the LLM
+    rerank_min_score: float = 0.05  # top rerank score below this => grade fails (rewrite + retry)
+    max_retrieval_iterations: int = Field(2, ge=1, le=5)
+    sparse_backend: Literal["bm25", "simple"] = "bm25"  # fastembed Qdrant/bm25, or built-in hashing tokenizer + IDF
+    # --- chunking ---
+    chunk_target_tokens: int = Field(900, ge=100)
+    chunk_overlap_ratio: float = Field(0.15, ge=0.0, le=0.5)
+    chunk_min_tokens: int = Field(200, ge=1)  # a new heading only starts a new chunk once the current one has this many
     max_context_chars: int = 25_000
 
     # --- memory ---
     memory_ttl_days: int = Field(30, ge=1)
     planner_cache_ttl_s: int = 3600
+    embed_cache_ttl_s: int = 7 * 86400
+    semcache_enabled: bool = True
+    semcache_threshold: float = 0.95
+    semcache_ttl_s: int = 86400
+    tenant_config_ttl_s: int = 60
+    web_concurrency: int = Field(1, ge=1)  # used to size the in-process rate-limit fallback
+    metrics_port: int = 9100
+
+    # --- loadtest (APP_ENV=loadtest): simulated upstream latency in ms ---
+    loadtest_llm_ms: float = 800
+    loadtest_llm_jitter_ms: float = 300
+    loadtest_embed_ms: float = 80
+    loadtest_embed_jitter_ms: float = 30
+    loadtest_guard_ms: float = 250
 
     # --- ingestion ---
     ingest_batch_size: int = Field(128, ge=1)
@@ -69,6 +93,7 @@ class Settings(BaseSettings):
 
     # --- observability ---
     logfire_token: SecretStr | None = None
+    langsmith_tracing: bool = False  # when true, LangGraph runs are traced with PII-redacted inputs/outputs
 
     @model_validator(mode="after")
     def _cross_checks(self):

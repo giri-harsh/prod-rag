@@ -25,6 +25,10 @@ class Principal:
     is_admin: bool
     rate_per_min: int
     rate_per_day: int
+    scopes: tuple[str, ...] = ()
+
+    def has_scope(self, scope: str) -> bool:
+        return scope in self.scopes
 
 
 # ---- sync admin operations (CLI / seed) -------------------------------------------------------
@@ -37,6 +41,7 @@ def create_key(
     rate_per_min: int = 60,
     rate_per_day: int = 10_000,
     label: str | None = None,
+    scopes: tuple[str, ...] = (),
 ) -> str:
     """Create a key and return the RAW value. It is shown once and never stored."""
     if not (ID_RE.match(tenant_id) and ID_RE.match(user_id)):
@@ -44,9 +49,9 @@ def create_key(
     raw = PREFIX + secrets.token_urlsafe(32)
     with psycopg.connect(database_url) as conn:
         conn.execute(
-            "INSERT INTO api_keys (key_hash, tenant_id, user_id, is_admin, rate_per_min, rate_per_day, label) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s)",
-            (hash_key(raw), tenant_id, user_id, is_admin, rate_per_min, rate_per_day, label),
+            "INSERT INTO api_keys (key_hash, tenant_id, user_id, is_admin, rate_per_min, rate_per_day, label, scopes) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (hash_key(raw), tenant_id, user_id, is_admin, rate_per_min, rate_per_day, label, list(scopes)),
         )
     return raw
 
@@ -87,7 +92,7 @@ class KeyStore:
             return hit[1]
         async with self._pool.connection() as conn:
             cur = await conn.execute(
-                "SELECT id, tenant_id, user_id, is_admin, rate_per_min, rate_per_day FROM api_keys "
+                "SELECT id, tenant_id, user_id, is_admin, rate_per_min, rate_per_day, scopes FROM api_keys "
                 "WHERE key_hash=%s AND revoked_at IS NULL",
                 (h,),
             )
@@ -95,8 +100,45 @@ class KeyStore:
         p = None
         if row:
             row = tuple(row.values()) if isinstance(row, dict) else row
-            p = Principal(str(row[0]), row[1], row[2], row[3], row[4], row[5])
+            p = Principal(str(row[0]), row[1], row[2], row[3], row[4], row[5], tuple(row[6] or ()))
         if len(self._cache) > 10_000:
             self._cache.clear()
         self._cache[h] = (now, p)
         return p
+
+
+def set_tenant_domain(database_url: str, tenant_id: str, domain: str | None) -> None:
+    if not ID_RE.match(tenant_id):
+        raise ValueError("tenant_id must match [A-Za-z0-9_.-]{1,64}")
+    with psycopg.connect(database_url) as conn:
+        conn.execute(
+            "INSERT INTO tenants (tenant_id, domain_description) VALUES (%s,%s) "
+            "ON CONFLICT (tenant_id) DO UPDATE SET domain_description=EXCLUDED.domain_description, updated_at=now()",
+            (tenant_id, domain),
+        )
+
+
+class TenantConfig:
+    """Per-tenant settings (currently the assistant domain) with a short in-process TTL cache."""
+
+    def __init__(self, pool, default_domain: str, ttl_s: float = 60.0):
+        self._pool, self._default, self._ttl = pool, default_domain, ttl_s
+        self._cache: dict[str, tuple[float, str]] = {}
+
+    async def domain(self, tenant_id: str) -> str:
+        hit = self._cache.get(tenant_id)
+        now = time.monotonic()
+        if hit and now - hit[0] < self._ttl:
+            return hit[1]
+        value = self._default
+        try:
+            async with self._pool.connection() as conn:
+                cur = await conn.execute("SELECT domain_description FROM tenants WHERE tenant_id=%s", (tenant_id,))
+                row = await cur.fetchone()
+            if row:
+                v = row["domain_description"] if isinstance(row, dict) else row[0]
+                value = v or self._default
+        except Exception:
+            pass  # config lookup must never take the request down; fall back to the global default
+        self._cache[tenant_id] = (now, value)
+        return value

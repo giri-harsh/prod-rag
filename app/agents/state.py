@@ -17,3 +17,8 @@ class AgentState(TypedDict, total=False):
     block_rail: str | None
     no_context: bool
     output_checked: bool
+    iteration: int
+    top_score: float | None
+    standalone: bool
+    cache_hit: bool
+    cache_query: str | None

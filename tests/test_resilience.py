@@ -181,7 +181,7 @@ async def test_portkey_llm_retries_bounds_concurrency_and_counts_tokens(monkeypa
 
     class FakePortkey:
         def __init__(self, **kw):
-            state["config"] = kw["config"]
+            state.setdefault("configs", []).append(kw["config"])
             self.chat = type("Chat", (), {"completions": Completions()})()
 
     mod = types.ModuleType("portkey_ai")
@@ -194,7 +194,8 @@ async def test_portkey_llm_retries_bounds_concurrency_and_counts_tokens(monkeypa
     res = await asyncio.gather(*[llm.complete("s", "u", feature="t") for _ in range(6)])
     assert all(r.text == "hi" and r.prompt_tokens == 7 for r in res)
     assert state["max"] <= 2  # semaphore bound
-    cfg = state["config"]
+    cfg, fast_cfg = state["configs"]
+    assert fast_cfg["strategy"]["mode"] == "single" and len(fast_cfg["targets"]) == 1  # cheap rewrite model
     assert cfg["strategy"]["mode"] == "fallback" and len(cfg["targets"]) == 2 and cfg["request_timeout"] > 0
     assert LLM_TOKENS.labels("t", "prompt")._value.get() >= 42
 

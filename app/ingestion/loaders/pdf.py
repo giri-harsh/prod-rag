@@ -49,3 +49,21 @@ def parse_pdf(file_path: str) -> str:
         except Exception as e:
             logfire.error(f"PDF Parse Failed for {file_path}: {e}")
             raise
+
+
+def parse_pdf_pages(file_path: str) -> list[tuple[int, str]]:
+    """Per-page text [(page_number, text)] using pypdf, falling back to pdfplumber for blank pages."""
+    with logfire.span("PDF page parsing", filename=file_path):
+        reader = PdfReader(file_path)
+        pages = [(i + 1, (pg.extract_text() or "")) for i, pg in enumerate(reader.pages)]
+        blank = [n for n, t in pages if not t.strip()]
+        if blank:
+            try:
+                import pdfplumber
+
+                with pdfplumber.open(file_path) as pdf:
+                    for n in blank:
+                        pages[n - 1] = (n, pdf.pages[n - 1].extract_text() or "")
+            except Exception as e:
+                logfire.warn("pdfplumber fallback failed", error=str(e))
+        return [(n, t) for n, t in pages if t.strip()]
