@@ -1,0 +1,55 @@
+[project]
+name = "prod-rag"
+version = "0.2.0"
+description = "Multi-tenant production RAG API"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "gunicorn",
+  "pydantic>=2",
+  "pydantic-settings",
+  "python-dotenv",
+  "logfire[fastapi]",
+  "langgraph",
+  "langgraph-checkpoint-postgres",
+  "psycopg[binary,pool]",
+  "langchain",
+  "langchain-core",
+  "langchain-openai",
+  "langchain-groq",
+  "langchain-google-genai",
+  "qdrant-client",
+  "flashrank",
+  "portkey-ai",
+  "nemoguardrails",
+  "redis",
+  "tenacity",
+  "arq",
+  "prometheus-fastapi-instrumentator",
+  "langsmith",
+  "pypdf",
+  "pdfplumber",
+  "beautifulsoup4",
+  "python-docx",
+  "python-pptx",
+]
+
+[project.optional-dependencies]
+ui = ["streamlit", "requests"]
+eval = ["ragas", "pandas", "openai"]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "fakeredis", "httpx", "ruff", "asgi-lifespan", "pgserver"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: needs real postgres/redis/qdrant (docker compose)"]
+
+[tool.ruff]
+line-length = 110
+extend-exclude = ["notebooks", "DATA", "evals", "ui"]
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501", "B008"]

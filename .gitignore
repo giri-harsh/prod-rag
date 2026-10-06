@@ -55,3 +55,10 @@ tenvv
 
 # Logs
 *.log
+.venv/
+_audit/
+processed_data/
+__pycache__/
+.env
+.pytest_cache/
+.ruff_cache/
