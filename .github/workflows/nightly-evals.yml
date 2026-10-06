@@ -1,0 +1,38 @@
+name: nightly-evals
+on:
+  schedule: [{cron: "17 2 * * *"}]
+  workflow_dispatch:
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    env:
+      HAVE_SECRETS: ${{ secrets.GROQ_API_KEY != '' && secrets.PORTKEY_API_KEY != '' && secrets.GEMINI_API_KEY != '' && secrets.RAG_EVAL_API_URL != '' }}
+    steps:
+      - name: Skip cleanly when secrets are absent
+        if: env.HAVE_SECRETS != 'true'
+        run: echo "Secrets not configured - skipping real RAGAS evals (this is not a failure)."
+      - uses: actions/checkout@v4
+        if: env.HAVE_SECRETS == 'true'
+      - uses: astral-sh/setup-uv@v5
+        if: env.HAVE_SECRETS == 'true'
+      - name: Install eval deps
+        if: env.HAVE_SECRETS == 'true'
+        run: |
+          uv venv --python 3.11 .venv
+          uv pip install --python .venv -r requirements.lock ragas pandas openai requests
+      - name: Run RAGAS evals against the deployed API
+        if: env.HAVE_SECRETS == 'true'
+        env:
+          EVAL_API_URL: ${{ secrets.RAG_EVAL_API_URL }}/query
+          RAG_API_KEY: ${{ secrets.RAG_EVAL_API_KEY }}
+          JUDGE_GROQ: ${{ secrets.JUDGE_GROQ }}
+        run: |
+          .venv/bin/python - <<'EOF'
+          import asyncio, json
+          from evals.pipeline import load_golden_dataset, run_pipeline
+          from evals.metrics import run_all_metrics
+          ds = run_pipeline(load_golden_dataset())
+          res = asyncio.run(run_all_metrics(ds))
+          print({k: float(v.iloc[:, -1].mean()) for k, v in res.items()})
+          EOF

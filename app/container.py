@@ -155,5 +155,5 @@ async def _close_all(closers):
     for c in reversed(closers):
         try:
             await c()
-        except Exception:
-            pass
+        except Exception as e:
+            logfire.warn("close failed during startup abort", error=str(e))

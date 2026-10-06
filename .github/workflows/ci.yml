@@ -3,22 +3,82 @@ on:
   push:
   pull_request:
 
+env:
+  PY: "3.11"
+
 jobs:
-  test:
+  lint-and-security:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - name: Install (locked)
         run: |
-          uv venv --python 3.11 .venv
+          uv venv --python $PY .venv
           uv pip install --python .venv -r requirements-dev.lock
-      - name: Lint (ruff)
-        run: .venv/bin/ruff check app tests
+      - run: .venv/bin/ruff check app tests
       - name: Import smoke test
         run: .venv/bin/pytest tests/test_imports.py -q
-      - name: Unit + integration tests (embedded Postgres, fake Redis/Qdrant/LLMs)
-        run: .venv/bin/pytest tests -q
+      - name: bandit (SAST)
+        run: .venv/bin/bandit -r app -q -ll
+      - name: pip-audit (locked deps)
+        run: .venv/bin/pip-audit -r requirements.lock --no-deps --disable-pip
+
+  tests-offline:
+    # embedded Postgres + fake Redis + Qdrant local mode; every LLM/embedding is a fake
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: |
+          uv venv --python $PY .venv
+          uv pip install --python .venv -r requirements-dev.lock
+      - run: .venv/bin/pytest tests -q
+
+  tests-integration:
+    # same suite against REAL service containers (postgres, redis, qdrant) incl. arq round trip + qdrant server indexes
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: {POSTGRES_PASSWORD: postgres}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:v1.19.2
+        ports: ["6333:6333"]
+    env:
+      DATABASE_INTEGRATION_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      REDIS_INTEGRATION_URL: redis://localhost:6379/0
+      QDRANT_INTEGRATION_URL: http://localhost:6333
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: |
+          uv venv --python $PY .venv
+          uv pip install --python .venv -r requirements-dev.lock
+      - name: Wait for Qdrant
+        run: for i in $(seq 1 30); do curl -fsS localhost:6333/readyz && break || sleep 2; done
+      - run: .venv/bin/pytest tests -q
+
+  image:
+    runs-on: ubuntu-latest
+    needs: [lint-and-security]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t prod-rag:ci .
+      - name: Non-root check
+        run: test "$(docker run --rm --entrypoint whoami prod-rag:ci)" = "app"
+      - name: Trivy image scan (HIGH/CRITICAL, fixable only)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: prod-rag:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

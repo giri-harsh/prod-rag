@@ -1,6 +1,9 @@
 x-app-env: &app-env
   APP_ENV: ${APP_ENV:-dev}
-  DATABASE_URL: postgresql://rag:rag@postgres:5432/rag
+  DATABASE_URL: postgresql://rag:rag@pgbouncer:5432/rag          # app traffic goes through pgbouncer (transaction pooling)
+  DIRECT_DATABASE_URL: postgresql://rag:rag@postgres:5432/rag    # migrations need a session-mode connection
+  WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
+  METRICS_PORT: 9100
   REDIS_URL: redis://redis:6379/0
   QDRANT_URL: http://qdrant:6333
   QDRANT_API_KEY: ${QDRANT_API_KEY:-}
@@ -45,6 +48,25 @@ services:
       timeout: 3s
       retries: 20
 
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.23.1-p3
+    environment:
+      DB_HOST: postgres
+      DB_USER: rag
+      DB_PASSWORD: rag
+      DB_NAME: rag
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "25"
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   migrate:           # one-shot: SQL migrations + LangGraph checkpoint tables
     <<: *app-build
     command: ["python", "-m", "app.db.migrate"]
@@ -60,6 +82,7 @@ services:
     volumes: ["./DATA:/data:ro"]
     depends_on:
       migrate: {condition: service_completed_successfully}
+      pgbouncer: {condition: service_healthy}
       redis: {condition: service_healthy}
       qdrant: {condition: service_healthy}
     # runs as the unprivileged `app` user (uid 10001) defined in the Dockerfile
@@ -71,6 +94,7 @@ services:
     volumes: ["./DATA:/data:ro"]
     depends_on:
       migrate: {condition: service_completed_successfully}
+      pgbouncer: {condition: service_healthy}
       redis: {condition: service_healthy}
       qdrant: {condition: service_healthy}
 

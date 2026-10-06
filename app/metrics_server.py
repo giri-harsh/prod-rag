@@ -19,7 +19,7 @@ def registry() -> CollectorRegistry:
     return REGISTRY
 
 
-def start(port: int, addr: str = "0.0.0.0"):  # noqa: S104 (bound inside the pod/network; not exposed by the Service)
+def start(port: int, addr: str = "0.0.0.0"):  # nosec B104 - internal metrics port; the k8s Service does not expose it
     return start_http_server(port, addr=addr, registry=registry())
 
 

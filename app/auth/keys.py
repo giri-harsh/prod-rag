@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import secrets
 import time
@@ -138,7 +139,7 @@ class TenantConfig:
             if row:
                 v = row["domain_description"] if isinstance(row, dict) else row[0]
                 value = v or self._default
-        except Exception:
-            pass  # config lookup must never take the request down; fall back to the global default
+        except Exception as e:  # config lookup must never take the request down; fall back to the global default
+            logging.getLogger(__name__).warning("tenant config lookup failed: %s", type(e).__name__)
         self._cache[tenant_id] = (now, value)
         return value

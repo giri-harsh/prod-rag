@@ -28,6 +28,7 @@ dependencies = [
   "arq",
   "prometheus-fastapi-instrumentator",
   "langsmith",
+  "fastembed",
   "pypdf",
   "pdfplumber",
   "beautifulsoup4",
@@ -40,7 +41,9 @@ ui = ["streamlit", "requests"]
 eval = ["ragas", "pandas", "openai"]
 
 [dependency-groups]
-dev = ["pytest", "pytest-asyncio", "fakeredis", "httpx", "ruff", "asgi-lifespan", "pgserver"]
+dev = ["pip-audit", "bandit", "pytest", "pytest-asyncio", "fakeredis", "httpx", "ruff", "asgi-lifespan", "pgserver"]
+
+load = ["locust"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

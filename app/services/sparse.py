@@ -31,7 +31,7 @@ class SimpleSparseEncoder:
         tf = Counter(t for t in _TOKEN.findall(text.lower()) if t not in _STOP and len(t) > 1)
         idx = {}
         for tok, n in tf.items():
-            i = int(hashlib.md5(tok.encode()).hexdigest()[:8], 16)  # noqa: S324 (non-crypto use)
+            i = int(hashlib.md5(tok.encode(), usedforsecurity=False).hexdigest()[:8], 16)
             idx[i] = idx.get(i, 0.0) + float(n)
         return models.SparseVector(indices=list(idx), values=list(idx.values()))
 

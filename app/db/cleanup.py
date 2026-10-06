@@ -9,8 +9,12 @@ import sys
 import psycopg
 from psycopg_pool import AsyncConnectionPool
 
-# checkpointer tables from langgraph-checkpoint-postgres
-_CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+# checkpointer tables from langgraph-checkpoint-postgres (static statements: no string-built SQL)
+_DELETE_STATEMENTS = (
+    "DELETE FROM checkpoint_writes WHERE thread_id = ANY(%s)",
+    "DELETE FROM checkpoint_blobs WHERE thread_id = ANY(%s)",
+    "DELETE FROM checkpoints WHERE thread_id = ANY(%s)",
+)
 
 _SELECT_STALE = "SELECT thread_id FROM thread_activity WHERE last_active < now() - make_interval(days => %s)"
 
@@ -22,8 +26,8 @@ async def cleanup_idle_threads(pool: AsyncConnectionPool, days: int) -> int:
             ids = [r[0] if not isinstance(r, dict) else r["thread_id"] for r in await cur.fetchall()]
             if not ids:
                 return 0
-            for t in _CHECKPOINT_TABLES:
-                await conn.execute(f"DELETE FROM {t} WHERE thread_id = ANY(%s)", (ids,))
+            for stmt in _DELETE_STATEMENTS:
+                await conn.execute(stmt, (ids,))
             await conn.execute("DELETE FROM thread_activity WHERE thread_id = ANY(%s)", (ids,))
             return len(ids)
 
@@ -31,8 +35,8 @@ async def cleanup_idle_threads(pool: AsyncConnectionPool, days: int) -> int:
 def cleanup_idle_threads_sync(database_url: str, days: int) -> int:
     with psycopg.connect(database_url, autocommit=False) as conn:
         ids = [r[0] for r in conn.execute(_SELECT_STALE, (days,)).fetchall()]
-        for t in _CHECKPOINT_TABLES:
-            conn.execute(f"DELETE FROM {t} WHERE thread_id = ANY(%s)", (ids,))
+        for stmt in _DELETE_STATEMENTS:
+            conn.execute(stmt, (ids,))
         conn.execute("DELETE FROM thread_activity WHERE thread_id = ANY(%s)", (ids,))
         conn.commit()
         return len(ids)

@@ -81,7 +81,9 @@ executing==2.2.1
 fastapi==0.142.2
     # via prod-rag (pyproject.toml)
 fastembed==0.8.1
-    # via nemoguardrails
+    # via
+    #   prod-rag (pyproject.toml)
+    #   nemoguardrails
 filelock==4.0.12
     # via huggingface-hub
 filetype==1.2.0

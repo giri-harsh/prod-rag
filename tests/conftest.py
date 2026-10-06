@@ -55,6 +55,11 @@ def _free_port() -> int:
 
 @pytest.fixture(scope="session")
 def pg_url():
+    if os.environ.get("DATABASE_INTEGRATION_URL"):  # CI service container / compose Postgres
+        url = os.environ["DATABASE_INTEGRATION_URL"]
+        migrate(url)
+        yield url
+        return
     import pgserver
 
     d = tempfile.mkdtemp(prefix="pgtest")
@@ -90,7 +95,7 @@ class FakeEmbedder:
     def _vec(self, text: str) -> list[float]:
         v = [0.0] * self.dim
         for w in re.findall(r"[a-z0-9]+", text.lower()):
-            v[int(hashlib.md5(w.encode()).hexdigest(), 16) % self.dim] += 1.0
+            v[int(hashlib.md5(w.encode(), usedforsecurity=False).hexdigest(), 16) % self.dim] += 1.0
         n = math.sqrt(sum(x * x for x in v)) or 1.0
         return [x / n for x in v]
 

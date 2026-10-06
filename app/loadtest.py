@@ -33,7 +33,7 @@ class LoadEmbedder:
     def _vec(self, text: str) -> list[float]:
         v = [0.0] * self.dim
         for w in re.findall(r"[a-z0-9]+", text.lower()):
-            v[int(hashlib.md5(w.encode()).hexdigest(), 16) % self.dim] += 1.0  # noqa: S324
+            v[int(hashlib.md5(w.encode(), usedforsecurity=False).hexdigest(), 16) % self.dim] += 1.0  # noqa: S324
         n = math.sqrt(sum(x * x for x in v)) or 1.0
         return [x / n for x in v]
 
