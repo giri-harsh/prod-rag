@@ -2,11 +2,13 @@
 All LLMs / embeddings are deterministic fakes. No network, no paid APIs."""
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hashlib
 import math
 import re
 import socket
+import sys
 import tempfile
 import threading
 import uuid
@@ -28,9 +30,6 @@ from app.guardrails import Guardrails
 from app.resilience import Breakers
 from app.services.llm import LLMResult
 from app.services.reranker import NoopReranker
-
-import asyncio
-import sys
 
 if sys.platform == "win32":  # psycopg async needs the selector loop (Linux/CI unaffected)
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
