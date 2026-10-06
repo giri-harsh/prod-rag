@@ -9,7 +9,7 @@ REPLACEMENT = "[REDACTED:{}]"
 
 _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b")
 _PHONE = re.compile(r"(?<![\w.])(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)[\s.-]?)?\d{3,5}[\s.-]\d{3,5}(?:[\s.-]\d{2,5})?(?![\w.])|\+\d{10,14}\b")
-_AADHAAR = re.compile(r"(?<!\d)[2-9]\d{3}[\s-]?\d{4}[\s-]?\d{4}(?!\d)")
+_AADHAAR = re.compile(r"(?<!\d)(?<!\d[\s-])[2-9]\d{3}[\s-]?\d{4}[\s-]?\d{4}(?!\d)")
 _PAN = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
 _CARD = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
 _KEY = re.compile(
@@ -85,12 +85,13 @@ def logfire_scrubbing():
     import logfire
 
     extra = [p.pattern for _, p in PATTERNS]
-    ours = set(extra)
 
     def callback(m: "logfire.ScrubMatch"):  # type: ignore[name-defined]
-        if m.pattern_match.re.pattern in ours:
+        # Logfire merges extra patterns into one regex, so identify "ours" by what was matched, not by pattern text.
+        hit = m.pattern_match.group(0)
+        if any(rx.search(hit) for _, rx in PATTERNS):
             return redact(m.value) if isinstance(m.value, str) else REPLACEMENT.format("PII")
-        return None  # default Logfire handling for its own sensitive-key patterns
+        return None  # Logfire's own sensitive-key patterns keep the default handling
 
     return logfire.ScrubbingOptions(extra_patterns=extra, callback=callback)
 

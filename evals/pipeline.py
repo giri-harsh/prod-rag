@@ -13,25 +13,20 @@ import os
 import requests
 import logfire
 
-API_URL = "http://localhost:8000/query"
+API_URL = os.getenv("EVAL_API_URL", "http://localhost:8080/query")
 RESPONSE_TRUNCATE = 300
-DELAY_BETWEEN_CALLS = 10   # seconds — stays within Groq RPM on the main key
+DELAY_BETWEEN_CALLS = float(os.getenv("EVAL_DELAY_S", "10"))   # seconds — stays within Groq RPM on the main key
 REQUEST_TIMEOUT = 120      # seconds — guardrails + LangGraph + Groq can take >60s
 
 
 
 
 def detect_tool(thought_process: list) -> str:
-    """
-    Maps the thought_process list from /query response to a tool name.
-    Planner sets:  'Intent: Technical' + 'Search Term: ...' → retrieve_documents
-                   'Intent: Conversational/Memory'           → direct_answer
-    main.py sets:  'Intent: Guardrails Fired'                → guardrails
-    """
+    """Map the `thought_process` returned by /query to a tool name (for Tool Correctness / Jaccard)."""
     joined = " ".join(thought_process).lower()
-    if "guardrails fired" in joined:
+    if "guardrail: blocked" in joined:
         return "guardrails"
-    if "intent: technical" in joined or "search term:" in joined or "context retrieved" in joined:
+    if "search:" in joined or "retrieval #" in joined or "semantic cache: hit" in joined:
         return "retrieve_documents"
     if "conversational" in joined or "memory" in joined:
         return "direct_answer"
@@ -63,7 +58,7 @@ def run_pipeline(golden_dataset: dict, progress_callback=None) -> dict:
                 try:
                     resp = requests.post(
                         API_URL,
-                        json={"q": question, "session_id": f"eval_run_{i}"},
+                        json={"q": question, "session_id": f"eval_run_{i}", "include_contexts": True},
                         headers={"X-API-Key": os.getenv("RAG_API_KEY", "")},
                         timeout=REQUEST_TIMEOUT,
                     )
@@ -72,7 +67,7 @@ def run_pipeline(golden_dataset: dict, progress_callback=None) -> dict:
 
                     raw_answer = data.get("answer") or ""
                     thought_process = data.get("thought_process") or []
-                    sources = data.get("sources") or []
+                    sources = data.get("contexts") or []  # chunk texts (needs an API key with the "eval" scope)
 
                     sample["actual_response"] = raw_answer[:RESPONSE_TRUNCATE]
                     sample["actual_contexts"] = sources[:5]

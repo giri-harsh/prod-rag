@@ -11,12 +11,11 @@ import copy
 import requests
 import logfire
 
-API_URL = "http://localhost:8000/query"
+API_URL = os.getenv("EVAL_API_URL", "http://localhost:8080/query")
 
 
 def _is_blocked(response_json: dict) -> bool:
-    tp = response_json.get("thought_process") or []
-    return any("guardrails fired" in step.lower() for step in tp)
+    return bool(response_json.get("blocked"))
 
 
 def run_guardrails_eval(guardrails_samples: list, progress_callback=None) -> list:
