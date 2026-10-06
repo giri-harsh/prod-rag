@@ -1,0 +1,133 @@
+"""Qdrant access: blue/green collections behind an alias, tenant-filtered search, config metadata."""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+import logfire
+from qdrant_client import AsyncQdrantClient, models
+
+from app.config import Settings
+from app.errors import EmbeddingConfigMismatch, RetrievalUnavailable
+from app.resilience import Breakers, call_upstream
+
+_VER = re.compile(r"_v(\d+)$")
+
+
+def make_client(s: Settings) -> AsyncQdrantClient:
+    if s.qdrant_url == ":memory:":
+        return AsyncQdrantClient(location=":memory:")
+    return AsyncQdrantClient(
+        url=s.qdrant_url,
+        api_key=s.qdrant_api_key.get_secret_value() if s.qdrant_api_key else None,
+        timeout=int(max(1, s.qdrant_timeout_s)),
+    )
+
+
+@dataclass
+class Hit:
+    text: str
+    source: str
+    score: float
+
+
+class VectorStore:
+    def __init__(self, client: AsyncQdrantClient, s: Settings, breakers: Breakers):
+        self.client, self.s, self._breaker = client, s, breakers["qdrant"]
+        self.alias = s.qdrant_collection
+
+    def _meta(self) -> dict:
+        return {"embedding_model": self.s.embedding_model, "embedding_dim": self.s.embedding_dim}
+
+    async def _q(self, coro_fn):
+        return await call_upstream(
+            self._breaker, coro_fn, timeout_s=self.s.qdrant_timeout_s, attempts=self.s.max_attempts, wait_max_s=1.0
+        )
+
+    # ---- schema / blue-green ----------------------------------------------------------------
+    async def resolve_alias(self) -> str | None:
+        aliases = (await self.client.get_aliases()).aliases
+        return next((a.collection_name for a in aliases if a.alias_name == self.alias), None)
+
+    async def versions(self) -> list[int]:
+        cols = (await self.client.get_collections()).collections
+        vs = [int(m.group(1)) for c in cols if c.name.startswith(self.alias) and (m := _VER.search(c.name))]
+        return sorted(vs)
+
+    async def create_versioned(self, version: int) -> str:
+        name = f"{self.alias}_v{version}"
+        await self.client.create_collection(
+            collection_name=name,
+            vectors_config=models.VectorParams(size=self.s.embedding_dim, distance=models.Distance.COSINE),
+            metadata=self._meta(),
+        )
+        await self.client.create_payload_index(
+            name, "tenant_id", field_schema=models.KeywordIndexParams(type="keyword", is_tenant=True)
+        )
+        await self.client.create_payload_index(name, "source_type", field_schema=models.PayloadSchemaType.KEYWORD)
+        await self.client.create_payload_index(name, "source", field_schema=models.PayloadSchemaType.KEYWORD)
+        return name
+
+    async def swap_alias(self, new_collection: str) -> None:
+        ops = []
+        if await self.resolve_alias():
+            ops.append(models.DeleteAliasOperation(delete_alias=models.DeleteAlias(alias_name=self.alias)))
+        ops.append(
+            models.CreateAliasOperation(
+                create_alias=models.CreateAlias(collection_name=new_collection, alias_name=self.alias)
+            )
+        )
+        await self.client.update_collection_aliases(change_aliases_operations=ops)  # applied atomically
+
+    async def ensure_active(self) -> str:
+        """Return the active physical collection, creating v1 + alias on first run."""
+        current = await self.resolve_alias()
+        if current:
+            return current
+        name = await self.create_versioned(1)
+        await self.swap_alias(name)
+        return name
+
+    async def prune_old(self, active: str) -> None:
+        keep = self.s.keep_old_collections
+        vs = await self.versions()
+        act = int(_VER.search(active).group(1))
+        for v in [x for x in vs if x < act][: max(0, len([x for x in vs if x < act]) - keep)]:
+            await self.client.delete_collection(f"{self.alias}_v{v}")
+
+    async def verify_config(self) -> None:
+        """Refuse to start if the index was built with a different embedding model/dimension."""
+        current = await self.resolve_alias()
+        if not current:
+            return  # empty system: first ingestion creates the collection with the configured model
+        info = await self.client.get_collection(current)
+        vec = info.config.params.vectors
+        dim = vec.size if hasattr(vec, "size") else None
+        meta = getattr(info.config, "metadata", None) or {}
+        want = self._meta()
+        if dim != want["embedding_dim"] or meta.get("embedding_model") != want["embedding_model"] or meta.get("embedding_dim") != want["embedding_dim"]:
+            raise EmbeddingConfigMismatch(
+                f"Index '{current}' was built with model={meta.get('embedding_model')} dim={meta.get('embedding_dim') or dim}, "
+                f"but config says model={want['embedding_model']} dim={want['embedding_dim']}. Rebuild the index (--rebuild) or fix config."
+            )
+
+    # ---- search -----------------------------------------------------------------------------
+    async def search(self, tenant_id: str, vector: list[float], limit: int) -> list[Hit]:
+        flt = models.Filter(must=[models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id))])
+        try:
+            resp = await self._q(
+                lambda: self.client.query_points(
+                    collection_name=self.alias, query=vector, query_filter=flt, limit=limit, with_payload=True
+                )
+            )
+        except Exception as e:
+            logfire.error("qdrant search failed", error=str(e))
+            raise RetrievalUnavailable(str(e)) from e
+        return [
+            Hit(p.payload.get("text", ""), p.payload.get("source", "unknown"), p.score)
+            for p in resp.points
+            if p.payload and p.payload.get("tenant_id") == tenant_id  # defence in depth
+        ]
+
+    async def ping(self) -> None:
+        await self.client.get_collections()
