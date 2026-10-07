@@ -6,6 +6,7 @@
 > * Input guard runs **concurrently** with the planner (`asyncio.gather`); a block discards the planner result.
 > * Retrieved chunks are **untrusted**: regex/heuristic injection screen (`app/guardrails/injection.py`) drops or neutralises
 >   suspicious chunks, survivors are wrapped in `<retrieved_context>` delimiters and the system prompt states they are data.
+> * `GUARD_ENGINE=actions` (default) invokes NeMo's `self_check_input/output` actions directly (~1 ms CPU); `runtime` uses the full Colang flow engine (~20 ms).
 > * Dialog-style colang intents (greeting/farewell/off-topic) were removed; off-topic policy is part of the input-rail prompt.
 
 # 15 — NeMo Guardrails

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     groq_slug_fallback: str = "brag"
     llm_primary_model: str = "llama-3.3-70b-versatile"
     llm_fallback_model: str = "llama-3.1-8b-instant"
+    guard_engine: Literal["actions", "runtime"] = "actions"  # "runtime" = full NeMo Colang flow engine (~20x more CPU)
     guard_model: str = "llama-3.1-8b-instant"
 
     # --- embeddings (Gemini GA) ---

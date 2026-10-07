@@ -12,7 +12,7 @@ spec:
     - type: Pods                    # custom metric: needs prometheus-adapter exposing http_requests_per_second
       pods:
         metric: {name: http_requests_per_second}
-        target: {type: AverageValue, averageValue: "40"}   # per-pod RPS target; see DOCS/12_CAPACITY.md
+        target: {type: AverageValue, averageValue: "45"}   # per-pod RPS target (~80% of the derated 56); see DOCS/12_CAPACITY.md
   behavior:
     scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Percent, value: 100, periodSeconds: 30}]}
     scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Pods, value: 2, periodSeconds: 60}]}

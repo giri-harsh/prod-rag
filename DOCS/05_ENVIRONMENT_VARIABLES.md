@@ -45,6 +45,7 @@ See `.env.example` for a template.
 | `PG_POOL_MAX` | 10 | Connections per worker process |
 | `DIRECT_DATABASE_URL` | - | Session-mode URL for migrations when `DATABASE_URL` is pgbouncer |
 | `METRICS_PORT` | 9100 | Internal Prometheus port |
+| `GUARD_ENGINE` | `actions` | `actions` (direct NeMo self-check actions) or `runtime` (full Colang flow engine) |
 | `LANGSMITH_TRACING` | false | Trace graph runs to LangSmith (PII-redacted) |
 | `LOADTEST_*_MS` | 800/300, 80/30, 250 | `APP_ENV=loadtest` simulated LLM / embed / guard latency |
 Per-tenant assistant domain: `python -m app.auth.cli tenant-set --tenant T --domain "..."` (falls back to `ASSISTANT_DOMAIN`).

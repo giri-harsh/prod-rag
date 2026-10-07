@@ -84,6 +84,7 @@ class Guardrails:
     def __init__(self, s: Settings, breakers: Breakers):
         self._s, self._breaker = s, breakers["guardrails"]
         self._rails = None
+        self._adapter = None
         self.init_error: str | None = None
 
     @property
@@ -107,16 +108,46 @@ class Guardrails:
                     max_retries=0,
                 )
             cfg = RailsConfig.from_content(yaml_content=_yaml())
-            self._rails = LLMRails(cfg, llm=LangChainLLMAdapter(llm))
+            self._adapter = LangChainLLMAdapter(llm)
+            self._rails = LLMRails(cfg, llm=self._adapter)
             self.init_error = None
             logfire.info("NeMo Guardrails initialised")
         except Exception as e:
             self._rails, self.init_error = None, f"{type(e).__name__}: {e}"
             logfire.error("NeMo Guardrails failed to initialise (requests will fail closed)", error=self.init_error)
 
+    async def _run_action(self, messages: list[dict], rail_type: str) -> GuardResult:
+        """Invoke NeMo's own `self_check_input/output` actions directly (same prompt, same Yes/No parsing, same
+        task manager) without the Colang flow engine, which cost ~20 ms CPU per call vs ~1 ms here (see DOCS/12)."""
+        from nemoguardrails.library.self_check.input_check.actions import self_check_input
+        from nemoguardrails.library.self_check.output_check.actions import self_check_output
+
+        rails = self._rails
+
+        async def _call():
+            ctx = {"user_message": messages[0]["content"]}
+            if rail_type == "input":
+                return await self_check_input(llms={}, llm_task_manager=rails.runtime.llm_task_manager,
+                                              context=ctx, llm=self._adapter, config=rails.config)
+            ctx["bot_message"] = messages[1]["content"]
+            return await self_check_output(llms={}, llm_task_manager=rails.runtime.llm_task_manager,
+                                           context=ctx, llm=self._adapter, config=rails.config)
+
+        try:
+            out = await call_upstream(self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=2, wait_max_s=1.0)
+        except Exception as e:  # includes timeouts and CircuitOpen -> fail closed
+            raise GuardrailUnavailable(f"{type(e).__name__}: {e}") from e
+        if getattr(out, "failed", False):
+            raise GuardrailUnavailable(f"rail action failed: {getattr(out, 'reason', None)}")
+        if out.is_blocked:
+            return GuardResult(True, f"self check {rail_type}", REFUSAL if rail_type == "input" else OUTPUT_REFUSAL)
+        return GuardResult(False)
+
     async def _run(self, messages: list[dict], rail_type: str) -> GuardResult:
         if self._rails is None:
             raise GuardrailUnavailable(self.init_error or "guardrails not initialised")
+        if self._s.guard_engine == "actions":
+            return await self._run_action(messages, rail_type)
 
         async def _call():
             return await self._rails.generate_async(
