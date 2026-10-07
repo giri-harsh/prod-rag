@@ -1,3 +1,7 @@
+> **Current state / gotchas.** (1) Indexes built before `hybrid-v1` are refused at startup: run `--rebuild`. (2) Changing `EMBEDDING_MODEL`/`EMBEDDING_DIM` needs a rebuild
+> (checked at startup and in `/readyz`). (3) The semantic cache keys on `index_version`; a rebuild invalidates it automatically. (4) Behind pgbouncer use transaction pooling
+> and run migrations with `DIRECT_DATABASE_URL`. (5) On Windows `arq`'s `Worker.close()` needs SIGUSR1 (POSIX only). (6) Qdrant local mode (`:memory:`) ignores payload indexes and its `count()` is stale after filtered deletes; use a server for realistic checks.
+
 # ⚠️ Known Gotchas & Architectural Decisions
 
 This document tracks non-obvious platform quirks and explains why the architecture is designed the way it is.

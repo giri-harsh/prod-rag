@@ -1,3 +1,6 @@
+> **Current state.** Point the eval clients at the API with `EVAL_API_URL` (default `http://localhost:8080/query`) and `RAG_API_KEY` (an `eval`-scope key).
+> Tool detection reads the new `thought_process` strings (`Search:`, `Retrieval #n`, `Input guardrail: blocked`). Guardrail evals use the response's `blocked` flag.
+
 # 18 — Evaluation Pipeline
 
 ## What is an Evaluation and Why Does It Matter?

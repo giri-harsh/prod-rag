@@ -48,7 +48,8 @@ load = ["locust"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-markers = ["integration: needs real postgres/redis/qdrant (docker compose)"]
+markers = ["integration: needs real postgres/redis/qdrant (docker compose)", "live: needs real Groq/Portkey/Gemini keys"]
+addopts = "--ignore=tests/live"
 
 [tool.ruff]
 line-length = 110

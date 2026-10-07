@@ -30,3 +30,21 @@ See `.env.example` for a template.
 | `RAG_API_KEY` | - | Used by `ui/` and `evals/` clients (sent as `X-API-Key`) |
 
 `GROQ_FALLBACK_API_KEY`, `LANGSMITH_*` and `BACKEND_URL` from the old setup are no longer read by the API.
+
+## Added in the hardening phase
+| Variable | Default | Purpose |
+|---|---|---|
+| `PREFETCH_K` / `FUSED_K` / `FINAL_K` | 40 / 20 / 5 | Per-branch candidates / after RRF / after rerank |
+| `RERANK_MIN_SCORE` | 0.05 | Below this top score the retrieval is graded poor (rewrite + retry) |
+| `MAX_RETRIEVAL_ITERATIONS` | 2 | Retrieval passes per request |
+| `SPARSE_BACKEND` | `bm25` | `bm25` (fastembed `Qdrant/bm25`) or `simple` (built-in tokenizer; Qdrant IDF modifier) |
+| `CHUNK_TARGET_TOKENS` / `CHUNK_OVERLAP_RATIO` / `CHUNK_MIN_TOKENS` | 900 / 0.15 / 200 | Chunker (tokens estimated as chars/4) |
+| `EMBED_CACHE_TTL_S` | 604800 | Redis embedding cache TTL (7 days) |
+| `SEMCACHE_ENABLED` / `SEMCACHE_THRESHOLD` / `SEMCACHE_TTL_S` | true / 0.95 / 86400 | Semantic answer cache |
+| `WEB_CONCURRENCY` | 1 | Workers per pod; divides per-key limits in the Redis-down fallback |
+| `PG_POOL_MAX` | 10 | Connections per worker process |
+| `DIRECT_DATABASE_URL` | - | Session-mode URL for migrations when `DATABASE_URL` is pgbouncer |
+| `METRICS_PORT` | 9100 | Internal Prometheus port |
+| `LANGSMITH_TRACING` | false | Trace graph runs to LangSmith (PII-redacted) |
+| `LOADTEST_*_MS` | 800/300, 80/30, 250 | `APP_ENV=loadtest` simulated LLM / embed / guard latency |
+Per-tenant assistant domain: `python -m app.auth.cli tenant-set --tenant T --domain "..."` (falls back to `ASSISTANT_DOMAIN`).

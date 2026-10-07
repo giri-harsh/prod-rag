@@ -1,3 +1,8 @@
+> **Current state (supersedes older text below).** Multi-tenant API (`X-API-Key`), tenant-derived thread ids, Postgres checkpoints,
+> hybrid dense+BM25 retrieval with server-side RRF then FlashRank, a cyclic grade/rewrite loop, fail-closed NeMo input/output rails,
+> Redis rate limits + embedding/planner caches + a Qdrant semantic answer cache, arq ingestion with blue/green indexes.
+> See the README request-flow diagram. There is no response streaming: the output guard needs the full draft.
+
 # 🤖 Enterprise Agentic RAG: System Overview
 
 A production-grade, state-of-the-art RAG system built for speed, scalability, and deep observability. This platform leverages **LangGraph** to handle complex reasoning and a fully local, cloud-agnostic stack for document intelligence.

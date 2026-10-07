@@ -1,3 +1,7 @@
+> **Current state.** `/query` returns chunk texts when called with `include_contexts=true` by a key with the `eval` scope; `evals/pipeline.py` uses it.
+> An offline smoke test (`tests/test_caches_security.py::test_offline_eval_pipeline_smoke`) exercises the pipeline with fake models in CI.
+> Real RAGAS runs happen in `.github/workflows/nightly-evals.yml` only when secrets exist.
+
 # 17 — Evaluating RAG Systems
 
 > **One-line summary:** Evals are automated tests that measure whether your RAG pipeline is actually giving correct, grounded, and relevant answers — before users tell you it isn't.

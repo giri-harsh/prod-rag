@@ -1,3 +1,7 @@
+> **Current state.** The ranker is loaded once at startup (model baked into the image under `/opt/flashrank`) and scores run in `asyncio.to_thread`.
+> `rerank()` now returns `(text, score)`; the **top score is the grading signal** for the retrieve/grade/rewrite loop (`RERANK_MIN_SCORE`, default 0.05, tune against your corpus).
+> If the reranker errors, the fused order is used with score 1.0 so the loop does not spin.
+
 # ⚡ FlashRank: Ultra-Fast Local Reranking
 
 This document explains the mechanism behind **FlashRank**, the semantic reranking engine used in our Retriever node to ensure high-fidelity responses without the cost of cloud-based ranking APIs.

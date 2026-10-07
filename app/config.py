@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(..., description="redis://host:6379/0")
     qdrant_url: str = Field(..., description="http(s)://host:6333, or ':memory:' in tests")
     qdrant_api_key: SecretStr | None = None
+    pg_pool_max: int = Field(10, ge=1)  # per worker process; total = workers x this (put pgbouncer in front)
     direct_database_url: str | None = None  # session-mode URL for migrations when DATABASE_URL points at pgbouncer
     qdrant_collection: str = "enterprise_rag"  # ALIAS name; physical collections are <alias>_v<N>
 

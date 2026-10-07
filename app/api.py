@@ -202,14 +202,16 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
                 "ON CONFLICT (thread_id) DO UPDATE SET last_active = now()",
                 (thread_id, p.tenant_id),
             )
+        # durability="exit": one checkpoint write per request instead of one per node (load test: the per-step
+        # writes through the saver's single connection lock were the first bottleneck)
         cfg = {"configurable": {"thread_id": thread_id, "tenant_id": p.tenant_id}}
         if ls_client is not None:
             from langsmith import tracing_context
 
             with tracing_context(client=ls_client, enabled=True):
-                out = await svc.graph.ainvoke({"messages": [{"role": "user", "content": q}]}, config=cfg)
+                out = await svc.graph.ainvoke({"messages": [{"role": "user", "content": q}]}, config=cfg, durability="exit")
         else:
-            out = await svc.graph.ainvoke({"messages": [{"role": "user", "content": q}]}, config=cfg)
+            out = await svc.graph.ainvoke({"messages": [{"role": "user", "content": q}]}, config=cfg, durability="exit")
         if not out.get("output_checked"):  # defence in depth: never return an unchecked answer
             raise AppError("output guard did not run")
         resp = {

@@ -1,6 +1,27 @@
 # 🧠 Node Intelligence: The Agentic Brain
 
-The pipeline is a **LangGraph state machine** with conditional branches (`gate_and_plan -> retrieve? -> respond -> output_guard`). It is currently a *linear graph with branches, not a cyclic one*; an iterative retrieve/reflect loop is planned for a later phase. All nodes are `async` and tenant identity comes from the server-set `config["configurable"]["tenant_id"]`.
+The pipeline is a **LangGraph state machine with a real cycle**: `retrieve -> grade -> rewrite_query -> retrieve` (at most `MAX_RETRIEVAL_ITERATIONS`, default 2).
+Grading uses the top FlashRank score (no extra LLM call); only `rewrite_query` calls an LLM (the cheap model). All nodes are `async`; tenant identity comes from the
+server-set `config["configurable"]["tenant_id"]`.
+
+```mermaid
+graph TD
+  gate_and_plan -->|blocked| END
+  gate_and_plan -->|conversational| respond
+  gate_and_plan -->|standalone search| cache_lookup
+  gate_and_plan -->|follow-up| retrieve
+  cache_lookup -->|hit| END
+  cache_lookup -->|miss| retrieve
+  retrieve -->|no hits| END
+  retrieve --> grade
+  grade -->|good| respond
+  grade -->|poor, iterations left| rewrite_query
+  rewrite_query --> retrieve
+  grade -->|poor, exhausted| give_up
+  give_up --> END
+  respond --> output_guard --> END
+```
+The same cycle is returned (as Mermaid text) by `GET /graph` for admin keys.
 
 ---
 

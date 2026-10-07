@@ -77,7 +77,9 @@ class LoadGuardLLM(BaseChatModel):
         return "loadtest-guard"
 
     def _decide(self, messages) -> ChatResult:
-        text = str(messages[-1].content).lower()
+        full = str(messages[-1].content)
+        m = re.search(r'User message: "(.*)"\s*Should the message be blocked', full, re.S)  # judge only the user's text, not the policy
+        text = (m.group(1) if m else "").lower()
         bad = any(t in text for t in ("ignore all previous", "ignore previous", "jailbreak", "system prompt", "you are now dan"))
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content="Yes" if bad else "No"))])
 
