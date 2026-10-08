@@ -22,13 +22,19 @@ async def _run(a) -> int:
     b = Breakers(s.breaker_failures, s.breaker_reset_s)
     client = make_client(s)
     try:
-        vs = VectorStore(client, s, b)
         from redis import asyncio as aioredis
 
+        from app.services.rebuild import RebuildCoordinator, RebuildInProgress
+
         r = aioredis.from_url(s.redis_url)
+        vs = VectorStore(client, s, b, RebuildCoordinator(r, s.qdrant_collection, s.direct_database_url or s.database_url, s.rebuild_lock_ttl_s))
         try:
             emb = CachedEmbedder(GeminiEmbedder(s, b), r, s.embed_cache_ttl_s)
-            rep = await ingest(vs, emb, make_sparse_encoder(s.sparse_backend), s, a.tenant, a.path, a.source_type, a.rebuild)
+            try:
+                rep = await ingest(vs, emb, make_sparse_encoder(s.sparse_backend), s, a.tenant, a.path, a.source_type, a.rebuild)
+            except RebuildInProgress:
+                print("another rebuild of this index is already running; retry later", file=sys.stderr)
+                return 2
         finally:
             await r.aclose()
     finally:

@@ -35,6 +35,7 @@ class IngestReport:
     chunks_embedded: int = 0
     failed: list[tuple[str, str]] = field(default_factory=list)
     swapped: bool = False
+    reconciled: dict = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -120,13 +121,13 @@ async def _index_file(vs: VectorStore, embedder, sparse, s: Settings, target: st
             )
             for (pid, c, chash), d, sv in zip(part, dense, sparse_v, strict=True)
         ]
-        await vs.client.upsert(target, pts, wait=True)
+        await vs.write_points(target, pts)
         rep.chunks_embedded += len(pts)
 
     if not fresh:  # drop stale versions of this file
-        await vs.client.delete(
+        await vs.delete_where(
             target,
-            points_selector=models.FilterSelector(filter=models.Filter(
+            models.FilterSelector(filter=models.Filter(
                 must=[
                     models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id)),
                     models.FieldCondition(key="source", match=models.MatchValue(value=source)),
@@ -135,8 +136,37 @@ async def _index_file(vs: VectorStore, embedder, sparse, s: Settings, target: st
                 ],
                 must_not=[models.FieldCondition(key="file_hash", match=models.MatchValue(value=file_hash))],
             )),
-            wait=True,
         )
+
+
+async def _scan_hashes(vs: VectorStore, collection: str, exclude_tenant: str, batch: int) -> dict:
+    flt = models.Filter(must_not=[models.FieldCondition(key="tenant_id", match=models.MatchValue(value=exclude_tenant))])
+    out, offset = {}, None
+    while True:
+        pts, offset = await vs.client.scroll(collection, scroll_filter=flt, limit=batch, offset=offset,
+                                             with_payload=["content_hash"], with_vectors=False)
+        out.update({str(p.id): (p.payload or {}).get("content_hash") for p in pts})
+        if offset is None:
+            return out
+
+
+async def reconcile(vs: VectorStore, live: str, candidate: str, exclude_tenant: str, batch: int = 256) -> dict:
+    """Make the candidate equal to the live collection for every tenant except `exclude_tenant` (the one being rebuilt):
+    copy missing/different points from live, delete points that only exist in the candidate."""
+    L = await _scan_hashes(vs, live, exclude_tenant, batch)
+    C = await _scan_hashes(vs, candidate, exclude_tenant, batch)
+    missing = [i for i, h in L.items() if C.get(i) != h]
+    extra = [i for i in C if i not in L]
+    for i in range(0, len(missing), batch):
+        got = await vs.client.retrieve(live, ids=missing[i : i + batch], with_vectors=True, with_payload=True)
+        if got:
+            await vs.client.upsert(candidate, [models.PointStruct(id=p.id, vector=p.vector, payload=p.payload) for p in got], wait=True)
+    for i in range(0, len(extra), batch):
+        await vs.client.delete(candidate, points_selector=models.PointIdsList(points=extra[i : i + batch]), wait=True)
+    stats = {"copied": len(missing), "removed": len(extra)}
+    if missing or extra:
+        logfire.warn("reconciliation repaired drift between live and rebuild candidate", **stats)
+    return stats
 
 
 async def ingest(vs: VectorStore, embedder, sparse, s: Settings, tenant_id: str, path: str,
@@ -149,36 +179,55 @@ async def ingest(vs: VectorStore, embedder, sparse, s: Settings, tenant_id: str,
 
     with logfire.span("ingest", tenant=tenant_id, path=path, rebuild=rebuild):
         active = await vs.resolve_alias()
-        new_collection = None
-        if rebuild or not active:
-            versions = await vs.versions()
-            new_collection = await vs.create_versioned((versions[-1] + 1) if versions else 1)
-            target = new_collection
-            if active:
-                n = await _copy_other_tenants(vs, active, target, tenant_id, s.ingest_batch_size)
-                logfire.info("copied other tenants' points", points=n)
-        else:
-            target = active
-        rep.collection = target
-        fresh = new_collection is not None
-
-        for f, source, stype in _discover(root, source_type):
-            try:
-                pages = await asyncio.to_thread(_parse_pages, f)
-                if not any(t.strip() for _, t in pages):
-                    raise ValueError("no text extracted")
-                await _index_file(vs, embedder, sparse, s, target, tenant_id, source, stype, pages, fresh, rep)
-                rep.files_ok += 1
-            except Exception as e:  # collect, keep going, report at the end
-                logfire.error("file failed", file=source, error=str(e))
-                rep.failed.append((source, f"{type(e).__name__}: {e}"))
-
-        if new_collection:
-            if rep.failed and active:  # rebuild with errors: keep serving the old index
-                await vs.client.delete_collection(new_collection)
-                logfire.error("rebuild aborted; alias not swapped", failures=len(rep.failed))
+        needs_new = rebuild or not active
+        handle, new_collection, swapped = None, None, False
+        try:
+            if needs_new and vs.coordinator:
+                handle = await vs.coordinator.acquire()  # RebuildInProgress -> 409 at the API; the live alias is untouched
+                active = await vs.resolve_alias()  # re-read under the lock
+                needs_new = rebuild or not active
+            if needs_new:
+                if active:
+                    await vs.gc_orphans(active)
+                versions = await vs.versions()
+                new_collection = await vs.create_versioned((versions[-1] + 1) if versions else 1)
+                target = new_collection
+                if active:
+                    if handle:
+                        await vs.coordinator.set_state(handle, active, new_collection)  # start dual-writing BEFORE the copy
+                    n = await _copy_other_tenants(vs, active, target, tenant_id, s.ingest_batch_size)
+                    logfire.info("copied other tenants' points", points=n)
             else:
-                await vs.swap_alias(new_collection)
-                rep.swapped = True
-                await vs.prune_old(new_collection)
+                target = active
+            rep.collection = target
+            fresh = new_collection is not None
+
+            for f, source, stype in _discover(root, source_type):
+                try:
+                    pages = await asyncio.to_thread(_parse_pages, f)
+                    if not any(t.strip() for _, t in pages):
+                        raise ValueError("no text extracted")
+                    await _index_file(vs, embedder, sparse, s, target, tenant_id, source, stype, pages, fresh, rep)
+                    rep.files_ok += 1
+                except Exception as e:  # collect, keep going, report at the end
+                    logfire.error("file failed", file=source, error=str(e))
+                    rep.failed.append((source, f"{type(e).__name__}: {e}"))
+
+            if new_collection:
+                if rep.failed and active:  # rebuild with errors: keep serving the old index
+                    logfire.error("rebuild aborted; alias not swapped", failures=len(rep.failed))
+                else:
+                    if active:
+                        rep.reconciled = await reconcile(vs, active, new_collection, tenant_id, s.ingest_batch_size)
+                    await vs.swap_alias(new_collection)
+                    swapped = rep.swapped = True
+                    await vs.prune_old(new_collection)
+        finally:
+            if new_collection and not swapped:  # failed/aborted/crashed rebuild: drop the candidate, live stays as it was
+                try:
+                    await vs.client.delete_collection(new_collection)
+                except Exception as e:
+                    logfire.warn("could not delete rebuild candidate", candidate=new_collection, error=str(e))
+            if handle:
+                await vs.coordinator.release(handle)
     return rep

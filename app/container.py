@@ -68,7 +68,10 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
     qclient = ov.get("qdrant_client") or make_client(s)
     if "qdrant_client" not in ov:  # injected clients are owned (and closed) by the caller
         closers.append(qclient.close)
-    vectors = VectorStore(qclient, s, breakers)
+    from app.services.rebuild import RebuildCoordinator
+
+    coordinator = RebuildCoordinator(redis, s.qdrant_collection, s.direct_database_url or s.database_url, s.rebuild_lock_ttl_s)
+    vectors = VectorStore(qclient, s, breakers, coordinator)
     try:
         await vectors.verify_config()  # refuse to start on embedding model/dim mismatch
         try:

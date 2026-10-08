@@ -327,6 +327,10 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
             raise HTTPException(400, "path escapes INGEST_ROOT")
         if not target.exists():
             raise HTTPException(404, "path not found")
+        if body.rebuild and await svc.vectors.coordinator.is_locked():
+            from app.services.rebuild import RebuildInProgress
+
+            raise RebuildInProgress(svc.vectors.alias)  # fail fast instead of queueing a job that cannot run
         if svc.arq is None:
             raise HTTPException(503, "job queue unavailable")
         job = await svc.arq.enqueue_job("ingest_job", body.tenant_id, str(target), body.source_type, body.rebuild)

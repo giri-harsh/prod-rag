@@ -20,13 +20,15 @@ async def startup(ctx):
     b = Breakers(s.breaker_failures, s.breaker_reset_s)
     ctx["s"] = s
     ctx["client"] = make_client(s)
-    ctx["vs"] = VectorStore(ctx["client"], s, b)
     from redis import asyncio as aioredis
 
+    from app.services.rebuild import RebuildCoordinator
     from app.services.semcache import SemanticCache
     from app.services.sparse import make_sparse_encoder
 
     ctx["redis"] = aioredis.from_url(s.redis_url)
+    coord = RebuildCoordinator(ctx["redis"], s.qdrant_collection, s.direct_database_url or s.database_url, s.rebuild_lock_ttl_s)
+    ctx["vs"] = VectorStore(ctx["client"], s, b, coord)
     ctx["semcache"] = SemanticCache(ctx["client"], s)
     if "embedder" not in ctx:  # tests pre-seed a fake
         from app.services.embedding import GeminiEmbedder

@@ -43,8 +43,9 @@ class Hit:
 
 
 class VectorStore:
-    def __init__(self, client: AsyncQdrantClient, s: Settings, breakers: Breakers):
+    def __init__(self, client: AsyncQdrantClient, s: Settings, breakers: Breakers, coordinator=None):
         self.client, self.s, self._breaker = client, s, breakers["qdrant"]
+        self.coordinator = coordinator  # RebuildCoordinator | None
         self.alias = s.qdrant_collection
         self._ver_cache: tuple[float, int] | None = None
 
@@ -112,6 +113,44 @@ class VectorStore:
         name = await self.create_versioned(1)
         await self.swap_alias(name)
         return name
+
+    # ---- writes (mirrored to the rebuild candidate while a rebuild is active) ---------------------
+    async def _mirror(self, target: str):
+        if not self.coordinator:
+            return None
+        cand = await self.coordinator.mirror_target(target)
+        return cand if cand and cand != target else None
+
+    async def write_points(self, target: str, points: list) -> None:
+        await self.client.upsert(target, points, wait=True)
+        cand = await self._mirror(target)
+        if cand:
+            try:
+                await self.client.upsert(cand, points, wait=True)
+            except Exception as e:  # never fail the primary write; the pre-swap reconciliation repairs drift
+                logfire.warn("dual-write upsert to rebuild candidate failed", candidate=cand, error=str(e))
+
+    async def delete_where(self, target: str, selector) -> None:
+        await self.client.delete(target, points_selector=selector, wait=True)
+        cand = await self._mirror(target)
+        if cand:
+            try:
+                await self.client.delete(cand, points_selector=selector, wait=True)
+            except Exception as e:
+                logfire.warn("dual-write delete on rebuild candidate failed", candidate=cand, error=str(e))
+
+    async def gc_orphans(self, live: str) -> list[str]:
+        """Delete candidates left behind by crashed rebuilds (version above the live one). Call only while holding the rebuild lock."""
+        live_v = version_of(live)
+        gone = []
+        for v in await self.versions():
+            if v > live_v:
+                name = f"{self.alias}_v{v}"
+                await self.client.delete_collection(name)
+                gone.append(name)
+        if gone:
+            logfire.warn("garbage-collected orphaned rebuild candidates", collections=gone)
+        return gone
 
     async def prune_old(self, active: str) -> None:
         keep = self.s.keep_old_collections

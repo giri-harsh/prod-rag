@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     ingest_batch_size: int = Field(128, ge=1)
     ingest_root: str = "DATA"
     keep_old_collections: int = 1
+    rebuild_lock_ttl_s: int = Field(60, ge=3)  # heartbeat renews it while a rebuild is alive; expiry = crashed holder
 
     assistant_domain: str = "Kubernetes, Intel hardware and enterprise networking"
 
