@@ -1,6 +1,6 @@
-"""Static check: every metric and label used by the Prometheus rules really exists.
+"""Static check: every metric and label used by the Prometheus rules and the Grafana dashboards really exists.
 
-    python scripts/check_metric_names.py [deploy/observability/prometheus/alerts.yml ...]
+    python scripts/check_metric_names.py [alerts.yml | dashboard.json ...]
 
 Why: a rule that names a metric the app does not export is silently dead - the expression evaluates to no data
 forever and the alert never fires. promtool checks only the SYNTAX of an expression, never the names in it.
@@ -98,10 +98,33 @@ def used(expr: str) -> list[tuple[str, set[str]]]:
 
 
 def rules_of(path: pathlib.Path):
+    """(context, name, expr) for every PromQL expression in a Prometheus rule file or a Grafana dashboard JSON."""
+    if path.suffix == ".json":
+        import json
+
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        for panel in _panels(doc.get("panels", [])):
+            title = panel.get("title") or f"panel {panel.get('id')}"
+            for t in panel.get("targets", []) or []:
+                if t.get("expr"):
+                    yield panel.get("type", "?"), title, t["expr"]
+        for ann in doc.get("annotations", {}).get("list", []):
+            if ann.get("expr"):
+                yield "annotation", ann.get("name", "?"), ann["expr"]
+        return
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     for group in doc.get("groups", []):
         for rule in group.get("rules", []):
             yield group.get("name", "?"), rule.get("alert") or rule.get("record") or "?", rule.get("expr", "")
+
+
+def _panels(panels: list) -> list:
+    """Flatten Grafana rows, whose child panels live in panel["panels"] when the row is collapsed."""
+    out = []
+    for p in panels:
+        out.append(p)
+        out.extend(_panels(p.get("panels", []) or []))
+    return out
 
 
 def main(argv: list[str]) -> int:

@@ -23,6 +23,12 @@ def q(text, session="s1", **kw):
     return {"q": text, "session_id": session, **kw}
 
 
+def degraded_count(step: str) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value("rag_degraded_total", {"step": step}) or 0.0
+
+
 # ------------------------------------------------------------------------- R-1 chunking
 def test_chunker_size_overlap_headings_and_pages():
     pages = [(1, DOC[: len(DOC) // 2]), (2, DOC[len(DOC) // 2 :])]
@@ -268,7 +274,8 @@ async def test_graph_endpoint_shows_the_cycle(make_app, new_key):
     _, ak = new_key(admin=True)
     async with make_app() as e:
         text = (await e.client.get("/graph", headers=H(ak))).text
-        assert re.search(r"rewrite_query\s*-->\s*retrieve", text) and re.search(r"retrieve\s*(-->|-\.->)\s*grade", text)
+        # both edges are conditional, so mermaid may draw either arrow style; what matters is that the cycle is there
+        assert re.search(r"rewrite_query\s*(-->|-\.->)\s*retrieve", text) and re.search(r"retrieve\s*(-->|-\.->)\s*grade", text)
         g = e.svc.graph.get_graph()
         edges = {(x.source, x.target) for x in g.edges}
         assert ("rewrite_query", "retrieve") in edges and ("grade", "rewrite_query") in edges and ("retrieve", "grade") in edges
@@ -344,6 +351,7 @@ async def test_a_failing_planner_degrades_to_searching_the_users_own_question(ma
 
     t, k = new_key()
     llm = PlannerDown()
+    before = degraded_count("planner")
     async with make_app(llm=llm) as e:
         await seed_docs(e, t, {"a.txt": "pods nodes scheduler kubernetes " * 20})
         r = await e.client.post("/query", json=q("How are pods scheduled onto nodes?"), headers=H(k))
@@ -352,6 +360,33 @@ async def test_a_failing_planner_degrades_to_searching_the_users_own_question(ma
         assert j["sources"] == ["a.txt"] and j["answer"] == "FAKE ANSWER"  # retrieval + responder ran normally
         assert any("Planner unavailable" in p for p in j["thought_process"])  # and the degradation is visible to the caller
         assert len(llm.of("planner")) == 1  # not retried inside the request
+    assert degraded_count("planner") == before + 1  # the skipped step is still counted for alerting
+
+
+async def test_a_failing_query_rewrite_ends_with_the_no_context_answer_not_a_503(make_app, new_key, seed_docs):
+    """The rewrite is advisory too: with no better query left to try, the honest result is the no-context answer."""
+    from tests.conftest import FakeLLM
+
+    class RewriteDown(FakeLLM):
+        async def complete(self, system, user, *, feature, temperature=0.0, fast=False):
+            if feature == "rewrite":
+                self.calls.append((feature, system, user))
+                raise ValueError("empty completion from openai/gpt-oss-20b for feature 'rewrite' (finish_reason=stop)")
+            return await super().complete(system, user, feature=feature, temperature=temperature, fast=fast)
+
+    t, k = new_key()
+    llm = RewriteDown()
+    before = degraded_count("rewrite")
+    # the reranker scores every retrieval poorly, so grading always routes to the rewrite node
+    async with make_app(llm=llm, reranker=ScriptedReranker([[0.01], [0.01], [0.01]])) as e:
+        await seed_docs(e, t, {"a.txt": "pods nodes scheduler kubernetes " * 20})
+        r = await e.client.post("/query", json=q("How are pods scheduled onto nodes?"), headers=H(k))
+        assert r.status_code == 200, r.text[:200]
+        j = r.json()
+        assert j["answer"] == NO_CONTEXT_ANSWER and j["sources"] == []
+        assert any("query rewrite unavailable" in p for p in j["thought_process"])
+        assert llm.of("responder") == []  # no answer was generated from poor context
+    assert degraded_count("rewrite") == before + 1
 
 
 def test_numbered_list_items_do_not_hijack_heading_paths_in_markdown_docs():

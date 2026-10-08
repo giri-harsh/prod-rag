@@ -113,6 +113,31 @@ class Counter:
         return await self._call(self.inner.embed_texts, ts)
 
 
+async def clear_caches(svc, s, tenant: str, texts: list[str]) -> dict:
+    """Drop everything that would let this run replay an earlier one: the tenant's cached answers and planner
+    decisions, and the Redis embedding cache entries for exactly the questions about to be asked (that cache is
+    keyed by text hash, not by tenant, so only those keys are touched)."""
+    from qdrant_client import models
+
+    from app.services.embedding_cache import cache_key
+
+    out = {"semcache_points": "unknown", "planner_keys": 0, "embedding_keys": 0}
+    ekeys = [cache_key(s.embedding_model, s.embedding_dim, t) for t in texts]
+    if ekeys:
+        out["embedding_keys"] = int(await svc.redis.delete(*ekeys))
+    try:
+        await svc.semcache.ensure()
+        flt = models.Filter(must=[models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant))])
+        await svc.semcache.client.delete(collection_name=svc.semcache.collection, points_selector=models.FilterSelector(filter=flt))
+        out["semcache_points"] = "deleted"
+    except Exception as e:  # a missing collection is fine: nothing cached yet
+        out["semcache_points"] = f"skipped ({type(e).__name__})"
+    async for k in svc.redis.scan_iter(f"planner:{tenant}:*"):
+        await svc.redis.delete(k)
+        out["planner_keys"] += 1
+    return out
+
+
 def overlap(answer: str, contexts: list[str]) -> float:
     """Heuristic groundedness: share of the answer's content words that occur in the retrieved context (NOT a substitute for reading it)."""
     words = {w for w in "".join(c if c.isalnum() else " " for c in answer.lower()).split() if w not in STOP and len(w) > 3}
@@ -145,6 +170,7 @@ async def test_live_end_to_end():
     app = create_app(s, {"llm": llm, "embedder": emb})
     golden = json.loads(pathlib.Path("evals/golden_dataset.json").read_text(encoding="utf-8"))["rag_samples"][:20]
     noisy = sorted(pathlib.Path("DATA/noisy_data").glob("*.txt"))[:10]
+    noisy_qs = [f"What does the document {p.stem} cover?" for p in noisy]
     st = Stages()
     async with LifespanManager(app) as mgr:
         svc = app.state.svc
@@ -177,6 +203,9 @@ async def test_live_end_to_end():
         st.wrap(llm, "complete", lambda a, kw: f"llm.{kw.get('feature', 'unknown')}")
         if not pre_ingested:
             await ingest(svc.vectors, svc.embedder, svc.sparse, s, tenant, "DATA/true_data", "true")
+        # verify_live reuses one tenant, so without this a second run is served from the semantic + planner caches:
+        # 0 retrievals, 0 responder calls, every spot check with 0 contexts, and a report that verifies nothing.
+        cleared = await clear_caches(svc, s, tenant, [x["question"] for x in golden] + noisy_qs + OFF_TOPIC + ATTACKS)
         h = {"X-API-Key": key}
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=mgr.app), base_url="http://t", timeout=120) as c:
             retried = {"n": 0}
@@ -202,7 +231,7 @@ async def test_live_end_to_end():
                 return j
 
             true_res = [await ask(x["question"], include_contexts=True) for x in golden]
-            noisy_res = [await ask(f"What does the document {p.stem} cover?") for p in noisy]
+            noisy_res = [await ask(nq) for nq in noisy_qs]
             off_res = [await ask(x) for x in OFF_TOPIC]
             atk_res = [await ask(x) for x in ATTACKS]
 
@@ -217,13 +246,16 @@ async def test_live_end_to_end():
         "tenant_preingested": pre_ingested,
         "mode": "gateway" if s.use_gateway else "direct-groq",
         "models": {"primary": s.llm_primary_model, "fallback": s.llm_fallback_model, "guard": s.guard_model, "embedding": f"{s.embedding_model}/{s.embedding_dim}"},
-        "true_data": {"n": len(true_res), "false_blocks": false_blocks, "false_block_rate_pct": round(100 * false_blocks / len(true_res), 1)},
+        "true_data": {"n": len(true_res), "false_blocks": false_blocks, "false_block_rate_pct": round(100 * false_blocks / len(true_res), 1),
+                      "from_semantic_cache": sum(r["cache_hit"] for r in true_res), "with_retrieved_context": sum(bool(r.get("contexts")) for r in true_res)},
         "off_topic": {"n": len(off_res), "passed_through": off_pass, "false_pass_rate_pct": round(100 * off_pass / len(off_res), 1)},
         "attacks": {"n": len(atk_res), "passed_through": atk_pass, "false_pass_rate_pct": round(100 * atk_pass / len(atk_res), 1)},
         "noisy": {"n": len(noisy_res), "answered": sum(not refusal(r) for r in noisy_res)},
         "groundedness_spot_checks": spot,
         "latency_stages": st.summary(),
         "latency_request_ms": {"p50": totals[len(totals) // 2], "p95": totals[max(0, int(0.95 * len(totals)) - 1)], "max": totals[-1]},
+        "caches": {"cleared_before_run": cleared,
+                   "answers_served_from_semantic_cache": sum(r["cache_hit"] for r in true_res + noisy_res + off_res + atk_res)},
         "transient_503": {"retries_used": retried["n"], "retry_cap": RETRIES_503_PER_RUN,
                           "failed_calls": {"guard": len(guard_errors), "llm": len(llm.errors), "embedding": len(emb.errors)},
                           "reasons": (guard_errors + llm.errors + emb.errors)[:5]},
@@ -232,6 +264,11 @@ async def test_live_end_to_end():
     record("end_to_end", result)
     print("\nLIVE SMOKE RESULTS\n" + json.dumps({k: v for k, v in result.items() if k != "groundedness_spot_checks"}, indent=2))
     assert false_blocks <= 2 and atk_pass <= 2
+    # a run served from the caches proves nothing about retrieval or the responder, so fail instead of reporting it as a pass
+    cached = result["true_data"]["from_semantic_cache"]
+    with_ctx = result["true_data"]["with_retrieved_context"]
+    assert cached == 0, f"{cached}/{len(true_res)} true-data answers came from the semantic cache"
+    assert with_ctx >= len(true_res) - 2, f"only {with_ctx}/{len(true_res)} true-data answers had retrieved context"
 
 
 async def test_portkey_fallback_with_invalid_primary_key():

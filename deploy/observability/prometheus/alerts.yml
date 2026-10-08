@@ -217,6 +217,24 @@ groups:
           description: "{{ $value | humanizePercentage }} of /query requests ended in {{ $labels.upstream }} (503) over the last 5 minutes."
           runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragupstreamfailurerate"
 
+      - alert: RagPipelineDegraded
+        # The planner and the query rewrite are ADVISORY: when they fail the request is still answered 200, so this
+        # never appears in the 5xx SLO or in rag_upstream_errors_total. A sustained rate means the cheap model
+        # (LLM_FALLBACK_MODEL) is unhealthy - searches run on unrefined queries and the retrieval loop gives up early.
+        expr: |
+          sum by (step) (rate(rag_degraded_total{job="rag-api"}[15m]))
+            / scalar(sum(rate(http_requests_total{job="rag-api",handler="/query"}[15m]))) > 0.05
+          and on()
+          sum(rate(http_requests_total{job="rag-api",handler="/query"}[15m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "The {{ $labels.step }} step is skipped on more than 5 % of /query requests"
+          description: "{{ $value | humanizePercentage }} of /query requests ran without the {{ $labels.step }} step over the last 15 minutes: the answers are degraded even though the requests succeeded."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragpipelinedegraded"
+
   # ------------------------------------------------------------------ guardrails (correctness proxy, SLO-C1)
   - name: rag-guardrails
     rules:

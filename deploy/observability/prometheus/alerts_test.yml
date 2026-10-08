@@ -514,3 +514,29 @@ tests:
               summary: "Prometheus cannot scrape the RAG API metrics port"
               description: "job=rag-api target  is down or missing, so every other alert for it is blind."
               runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragapitargetdown"
+
+  # ---------------------------------------------------------------- advisory steps skipped (answered 200, degraded)
+  - name: a planner that keeps failing is caught even though every request answers 200
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+60x120'          # 1 req/s, all successful: the 5xx SLO sees nothing
+      - series: 'rag_degraded_total{job="rag-api",instance="a",step="planner"}'
+        values: '0x30 0+6x90'       # healthy for 30 m, then 10 % of requests lose the planner
+      - series: 'rag_degraded_total{job="rag-api",instance="a",step="rewrite"}'
+        values: '0x120'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: RagPipelineDegraded
+        exp_alerts: []
+      - eval_time: 40m              # rate is above 5 % but not yet for the full 15 m
+        alertname: RagPipelineDegraded
+        exp_alerts: []
+      - eval_time: 75m
+        alertname: RagPipelineDegraded
+        exp_alerts:
+          - exp_labels: {severity: warning, component: api, step: planner}
+            exp_annotations:
+              summary: "The planner step is skipped on more than 5 % of /query requests"
+              description: "10% of /query requests ran without the planner step over the last 15 minutes: the answers are degraded even though the requests succeeded."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragpipelinedegraded"

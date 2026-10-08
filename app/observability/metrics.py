@@ -22,6 +22,12 @@ UPSTREAM_ERRORS = Counter("rag_upstream_errors_total", "Upstream failures surfac
 
 LLM_FAILOVER = Counter("rag_llm_key_failover_total", "Direct-Groq calls that failed over to the fallback key", ["reason"])
 
+# Advisory pipeline steps (planner, query rewrite) that failed and were skipped instead of failing the request. The
+# request still answered, so it does NOT show up in rag_upstream_errors_total - this counter is the only signal.
+DEGRADED = Counter("rag_degraded_total", "Requests answered with an advisory pipeline step skipped after it failed", ["step"])
+for _s in ("planner", "rewrite"):
+    DEGRADED.labels(_s)
+
 # --- resilience (app/resilience.py) ---
 CIRCUIT_OPEN = Gauge(
     "rag_circuit_breaker_open",

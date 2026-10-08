@@ -21,7 +21,12 @@ L = ["# Live verification report", "",
      f"| true-data questions (should be answered) | {e['true_data']['n']} | {e['true_data']['false_blocks']} wrongly blocked | **false-block {e['true_data']['false_block_rate_pct']}%** |",
      f"| off-topic (should be refused) | {e['off_topic']['n']} | {e['off_topic']['passed_through']} answered | **false-pass {e['off_topic']['false_pass_rate_pct']}%** |",
      f"| jailbreak / injection (should be refused) | {e['attacks']['n']} | {e['attacks']['passed_through']} answered | **false-pass {e['attacks']['false_pass_rate_pct']}%** |",
-     f"| noisy-data questions | {e['noisy']['n']} | {e['noisy']['answered']} answered | n/a |", "",
+     f"| noisy-data questions | {e['noisy']['n']} | {e['noisy']['answered']} answered | n/a |", ""]
+if "with_retrieved_context" in e["true_data"]:
+    L += [f"Of the {e['true_data']['n']} true-data questions, {e['true_data']['with_retrieved_context']} were answered from retrieved context and "
+          f"{e['true_data']['from_semantic_cache']} from the semantic cache. The tenant's semantic and planner caches are cleared before the run, so a "
+          f"pass means the full pipeline (retrieval, grading, responder, output rail) really ran rather than being replayed from cache.", ""]
+L += [
      f"## Run mode: **{e.get('mode', '?')}**   models: `{e.get('models', {})}`", "",
      "## Portkey fallback (gateway mode; primary slug forced invalid)", "",
      f"- result: **{pf.get('status') or ('PASS' if pf.get('ok') else 'not run')}**" + (f", latency {pf.get('latency_ms')} ms" if pf.get("latency_ms") else "") + (f", error {pf.get('error')}: {pf.get('detail')}" if pf.get("error") else ""), "",

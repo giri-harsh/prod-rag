@@ -11,10 +11,19 @@ The API answer is never redacted. Over-redaction is expected (e.g. long digit gr
 ## Prometheus
 Served on a **separate internal port** (`METRICS_PORT`, default 9100; started by the gunicorn master, multiprocess-safe through `PROMETHEUS_MULTIPROC_DIR`); `/metrics` does not exist on the API port. Do not publish it outside the cluster/host.
 HTTP latency/error metrics come from `prometheus-fastapi-instrumentator`. Application counters: `rag_llm_tokens_total{feature,kind}`, `rag_guardrail_blocks_total{stage,rail}`, `rag_injection_chunks_total{action}`, `rag_rate_limited_total{window}` (minute, day, fallback, auth_fail),
-`rag_limiter_fallback_total`, `rag_embed_cache_total{result}`, `rag_semcache_total{result}`, `rag_upstream_errors_total{upstream}`.
+`rag_limiter_fallback_total`, `rag_embed_cache_total{result}`, `rag_semcache_total{result}`, `rag_upstream_errors_total{upstream}`, `rag_llm_key_failover_total{reason}`,
+`rag_degraded_total{step}` (an advisory step - planner or rewrite - failed and was skipped; the request still answered 200).
+Gauges: `rag_circuit_breaker_open{upstream}` (+ `rag_circuit_breaker_trips_total{upstream}`), `rag_ready`, `rag_ready_check{check}`, and - on the ingestion worker's own port
+(`WORKER_METRICS_PORT`, default 9101, `0` disables) - `rag_ingest_queue_depth` and `rag_worker_heartbeat_timestamp_seconds`.
+Multiprocess gauge modes are chosen per metric (`livesum` for breakers, `livemostrecent` for readiness and the worker gauges); see the module docstring in `app/observability/metrics.py`.
 
 ## Health
 `GET /healthz` -> `{"status":"ok"}` (liveness, no dependency checks). `GET /readyz` -> `{"ready": bool}`; an admin key additionally sees per-dependency results (Postgres, Redis, Qdrant, embedding-config match, guardrails).
 
+## Alerting and dashboards
+`deploy/observability/prometheus/` holds the scrape configs (Kubernetes SD and docker-compose), 17 alert rules and their `promtool` unit tests;
+`deploy/observability/grafana/rag_api_dashboard.json` is the dashboard. SLOs and one runbook per alert: [14_SLOS_AND_RUNBOOKS.md](14_SLOS_AND_RUNBOOKS.md).
+Validate any change with `bash scripts/check_alerts.sh` (promtool plus `scripts/check_metric_names.py`, which fails if a rule or panel names a metric or label the app does not export).
+
 ## Not provided
-Alert rules/dashboards, log shipping, and distributed tracing across the Streamlit UI are not part of this repository.
+Log shipping, an Alertmanager routing config, and distributed tracing across the Streamlit UI are not part of this repository.

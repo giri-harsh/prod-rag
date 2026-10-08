@@ -44,9 +44,22 @@ print(f"  alerts.yml: {n} rules, each with expr/severity/annotations/runbook_url
 EOF
 fi
 
-step "check_metric_names.py"
+step "check_metric_names.py (alert rules + Grafana dashboards)"
 if [ -x .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe; elif [ -x .venv/bin/python ]; then PY=.venv/bin/python; else PY=${PYTHON:-python}; fi
-"$PY" scripts/check_metric_names.py "$D/alerts.yml" || status=1
+"$PY" scripts/check_metric_names.py "$D/alerts.yml" deploy/observability/grafana/*.json || status=1
+
+step "Grafana dashboards parse and declare a datasource variable"
+"$PY" - <<'EOF' || status=1
+import json, pathlib
+for f in sorted(pathlib.Path("deploy/observability/grafana").glob("*.json")):
+    d = json.loads(f.read_text(encoding="utf-8"))
+    names = {v["name"] for v in d.get("templating", {}).get("list", [])}
+    panels = [p for p in d["panels"] if p.get("type") != "row"]
+    assert d.get("uid") and d.get("title"), f"{f.name}: needs a stable uid and a title"
+    assert "ds" in names, f"{f.name}: no 'ds' datasource variable (the dashboard would hard-code one Prometheus uid)"
+    assert all(p.get("description") for p in panels), f"{f.name}: every panel needs a description"
+    print(f"  {f.name}: {len(panels)} panels, uid {d['uid']!r}")
+EOF
 
 printf '\n'
 [ "$status" -eq 0 ] && echo "check_alerts OK" || echo "check_alerts FAILED" >&2
