@@ -220,3 +220,32 @@ def test_config_prod_requires_keys_and_valid_urls():
         load_settings(**{**base, "redis_url": "http://x"})
     ok = load_settings(app_env="prod", groq_api_key="a", portkey_api_key="b", gemini_api_key="c", **base)
     assert ok.embedding_model == "gemini-embedding-2" and ok.llm_timeout_s == 30 and ok.embed_timeout_s == 10 and ok.qdrant_timeout_s == 5
+
+
+async def test_cancelled_half_open_probe_does_not_wedge_the_breaker():
+    now = {"t": 0.0}
+    br = CircuitBreaker("x", failures=1, reset_s=10, clock=lambda: now["t"])
+
+    async def fail():
+        raise HTTPErr(400)
+
+    with pytest.raises(HTTPErr):
+        await call_upstream(br, fail, timeout_s=1, attempts=1)
+    now["t"] = 11  # half-open: the next call is the single probe
+    started = asyncio.Event()
+
+    async def hang():
+        started.set()
+        await asyncio.sleep(60)
+
+    task = asyncio.create_task(call_upstream(br, hang, timeout_s=30, attempts=1))
+    await started.wait()
+    task.cancel()  # e.g. the client disconnected mid-probe
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    async def ok():
+        return 1
+
+    assert await call_upstream(br, ok, timeout_s=1, attempts=1) == 1  # a new probe is allowed
+    assert br.state == "closed"

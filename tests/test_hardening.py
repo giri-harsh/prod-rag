@@ -138,3 +138,35 @@ async def test_llm_standalone_flag_is_ignored_when_history_exists(make_app, new_
         await e.client.post("/query", json=q(question, sid), headers=H(k))  # has history => must not be cached
         other = (await e.client.post("/query", json=q(question), headers=H(k))).json()  # fresh session, same words
         assert not other["cache_hit"]
+
+
+# ----------------------------------------------------------------------------- ingestion edge cases
+async def test_same_filename_in_two_source_types_does_not_delete_the_other(make_app, tmp_path):
+    from app.ingestion.pipeline import ingest
+
+    t = f"t{uuid.uuid4().hex[:6]}"
+    a, b = tmp_path / "true_data", tmp_path / "noisy_data"
+    a.mkdir()
+    b.mkdir()
+    (a / "doc.txt").write_text("alpha kubernetes pods content " * 10)
+    (b / "doc.txt").write_text("totally different noisy networking content " * 10)
+    async with make_app() as e:
+        for d in (a, b):  # ingest each root separately; both contain "doc.txt"
+            rep = await ingest(e.svc.vectors, e.embedder, e.svc.sparse, e.settings, t, str(d), d.name.split("_")[0])
+            assert rep.ok
+        pts, _ = await e.svc.vectors.client.scroll(e.settings.qdrant_collection, limit=100, with_payload=True)
+        types = {p.payload["source_type"] for p in pts if p.payload["tenant_id"] == t}
+        assert types == {"true", "noisy"}  # the second ingest did not wipe the first
+
+
+async def test_versions_only_counts_the_exact_alias(make_app):
+    from qdrant_client import models
+
+    async with make_app() as e:
+        vs = e.svc.vectors
+        other = f"{vs.alias}_eu"  # another deployment alias sharing our prefix
+        await vs.client.create_collection(f"{other}_v7", vectors_config={"dense": models.VectorParams(size=4, distance=models.Distance.COSINE)})
+        try:
+            assert await vs.versions() == [1]
+        finally:
+            await vs.client.delete_collection(f"{other}_v7")

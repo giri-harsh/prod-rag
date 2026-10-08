@@ -63,3 +63,12 @@ def get_embedding_model():
 ```
 
 This ensures your FastAPI server starts in **milliseconds**, and Logfire is guaranteed to be active before any AI service is touched.
+
+
+## Behaviours added by the self-review
+* **One in-flight request per session.** `/query` takes a Redis lock `lock:thread:<tenant:user:session>` (TTL = 4x `LLM_TIMEOUT_S`); a second concurrent request on the same session gets **409** with `Retry-After: 1`. Reason: with `durability="exit"` two concurrent runs would each write the checkpoint and the later one would silently drop the other's turn. If Redis is down the lock is skipped (logged).
+* **Semantic cache keys on the user's own words** (never on the planner's refined query) and only for the **first turn** of a session; the LLM's `standalone` flag is ignored.
+* **Request bodies over 64 KB** are rejected with 413 even when chunked or when `Content-Length` is missing/malformed.
+* **A blue/green `--rebuild` copies other tenants' points at the start.** Writes to other tenants made while the rebuild runs go to the old collection and are not carried over; run rebuilds in a quiet window or re-ingest those tenants afterwards. Concurrent rebuilds of the same alias are not coordinated (the second fails on `create_collection`).
+* Stale-point cleanup on re-ingest is scoped by `(tenant, source, source_type)`; the same relative filename under another `source_type` is a different file.
+* Unauthenticated requests with random keys each cost one Postgres lookup (negative results are cached for `key_cache_ttl`, 10 s); put an IP-level limiter at the edge.

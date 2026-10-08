@@ -73,8 +73,8 @@ class VectorStore:
 
     async def versions(self) -> list[int]:
         cols = (await self.client.get_collections()).collections
-        vs = [int(m.group(1)) for c in cols if c.name.startswith(self.alias) and (m := _VER.search(c.name))]
-        return sorted(vs)
+        own = re.compile(rf"^{re.escape(self.alias)}_v(\d+)$")  # exact: never count another alias that merely shares a prefix
+        return sorted(int(m.group(1)) for c in cols if (m := own.match(c.name)))
 
     async def create_versioned(self, version: int) -> str:
         name = f"{self.alias}_v{version}"

@@ -130,6 +130,8 @@ async def _index_file(vs: VectorStore, embedder, sparse, s: Settings, target: st
                 must=[
                     models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id)),
                     models.FieldCondition(key="source", match=models.MatchValue(value=source)),
+                    # same relative name under another source_type (e.g. true_data/a.txt vs noisy_data/a.txt) is a different file
+                    models.FieldCondition(key="source_type", match=models.MatchValue(value=stype)),
                 ],
                 must_not=[models.FieldCondition(key="file_hash", match=models.MatchValue(value=file_hash))],
             )),

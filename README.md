@@ -37,8 +37,8 @@ graph TD
 ## API
 | Endpoint | Auth | Notes |
 |---|---|---|
-| `POST /query` `{q, session_id, [tenant_id], [include_contexts]}` | `X-API-Key` | `thread_id` is server-derived (client `thread_id` -> 400); wrong `tenant_id` -> 403; 401 bad key; 429 limited; 503 (+`Retry-After`) when Qdrant/LLM/guardrails are down; `include_contexts` needs the `eval` key scope |
-| `POST /ingest` `{tenant_id, path, source_type?, rebuild?}` | admin key | Enqueues an arq job (path inside `INGEST_ROOT`) |
+| `POST /query` `{q, session_id, [tenant_id], [include_contexts]}` | `X-API-Key` | `thread_id` is server-derived (client `thread_id` -> 400); wrong `tenant_id` -> 403; 401 bad key; 409 (+`Retry-After: 1`) if another request on the same session is still running; 429 limited; 413 body over 64 KB; 503 (+`Retry-After`) when Qdrant/LLM/guardrails are down; `include_contexts` needs the `eval` key scope |
+| `POST /ingest` `{tenant_id, path, source_type?, rebuild?}` | admin key | Enqueues an arq job (path inside `INGEST_ROOT`). An admin key may only ingest into **its own tenant**; the `platform` scope (`auth.cli create --scope platform`) is needed for any other tenant |
 | `GET /graph` | admin key | Mermaid text (shows the cycle) |
 | `GET /healthz` | none | `{"status":"ok"}` only |
 | `GET /readyz` | none / admin | `{"ready": bool}`; per-dependency detail only with an admin key |

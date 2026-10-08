@@ -36,6 +36,10 @@ class CircuitBreaker:
         if st == "half-open":
             self._probing = True
 
+    def release_probe(self) -> None:
+        """A half-open probe was cancelled (client disconnect, shutdown): free the slot instead of wedging the breaker."""
+        self._probing = False
+
     def record_success(self) -> None:
         self._fails, self._opened_at, self._probing = 0, None, False
 
@@ -86,6 +90,7 @@ async def call_upstream(
     except CircuitOpen:
         raise
     except asyncio.CancelledError:
+        breaker.release_probe()
         raise
     except BaseException:
         breaker.record_failure()
