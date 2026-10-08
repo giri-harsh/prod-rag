@@ -72,3 +72,9 @@ This ensures your FastAPI server starts in **milliseconds**, and Logfire is guar
 * **A blue/green `--rebuild` copies other tenants' points at the start.** Writes to other tenants made while the rebuild runs go to the old collection and are not carried over; run rebuilds in a quiet window or re-ingest those tenants afterwards. Concurrent rebuilds of the same alias are not coordinated (the second fails on `create_collection`).
 * Stale-point cleanup on re-ingest is scoped by `(tenant, source, source_type)`; the same relative filename under another `source_type` is a different file.
 * Unauthenticated requests with random keys each cost one Postgres lookup (negative results are cached for `key_cache_ttl`, 10 s); put an IP-level limiter at the edge.
+
+## Auth lookup cost (O-2)
+* `X-API-Key` lookups go: in-process LRU of valid keys (`KEY_CACHE_TTL_S`=30, `KEY_CACHE_SIZE`) -> Redis negative cache of unknown key hashes (`KEY_NEG_TTL_S`=60) -> Postgres. A random-key flood therefore costs one Postgres lookup per unique key per 60 s.
+* `python -m app.auth.cli revoke` (and `create`) publish on Redis channel `auth:evict`; every worker drops the key immediately. Revoking by direct SQL falls back to the cache TTL.
+* Failed authentications are counted per client IP per minute (`AUTH_FAIL_PER_MIN`=20); above it the API answers **429** (with `Retry-After`) and skips lookups for that IP. Valid cached keys are unaffected.
+* `X-Forwarded-For` is trusted only when the direct peer is in `TRUSTED_PROXIES` (comma-separated IPs/CIDRs); the right-most untrusted hop is used. Set it to your ingress/LB addresses, otherwise every client appears as the proxy IP.

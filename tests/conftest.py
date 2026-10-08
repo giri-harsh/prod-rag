@@ -182,12 +182,12 @@ class Env:
 @pytest.fixture
 def make_app(settings):
     @contextlib.asynccontextmanager
-    async def _make(guard_responses=("No",), guard=None, qdrant_client=None, llm=None, embedder=None, reranker=None, **kw):
+    async def _make(guard_responses=("No",), guard=None, qdrant_client=None, llm=None, embedder=None, reranker=None, key_cache_ttl=0.0, key_neg_ttl=0, **kw):
         s = settings(**kw)
         llm = llm or FakeLLM()
         embedder = embedder or FakeEmbedder()
         ov = {
-            "llm": llm, "embedder": embedder, "reranker": reranker or NoopReranker(), "key_cache_ttl": 0.0,
+            "llm": llm, "embedder": embedder, "reranker": reranker or NoopReranker(), "key_cache_ttl": key_cache_ttl, "key_neg_ttl": key_neg_ttl,
             "sparse": SimpleSparseEncoder(),
             "qdrant_client": qdrant_client or _qdrant(),
             "guard": guard or make_guard(s, guard_responses),

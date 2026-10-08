@@ -40,12 +40,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "create":
         raw = keys.create_key(
-            db, a.tenant, a.user, is_admin=a.admin, label=a.label, scopes=tuple(a.scope),
+            db, a.tenant, a.user, is_admin=a.admin, label=a.label, scopes=tuple(a.scope), redis_url=s.redis_url,
             rate_per_min=a.per_min or s.default_rate_per_min, rate_per_day=a.per_day or s.default_rate_per_day,
         )
         print(raw)  # the only time the raw key is ever visible
     elif a.cmd == "revoke":
-        n = keys.revoke_key(db, raw=a.key, key_id=a.id)
+        n = keys.revoke_key(db, raw=a.key, key_id=a.id, redis_url=s.redis_url)
         print(f"revoked {n} key(s)")
         return 0 if n else 1
     elif a.cmd == "tenant-set":

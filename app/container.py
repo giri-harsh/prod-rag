@@ -12,6 +12,7 @@ from psycopg_pool import AsyncConnectionPool
 from redis import asyncio as aioredis
 
 from app.agents.graph import build_graph
+from app.auth.guard import AuthFailLimiter, parse_trusted
 from app.auth.keys import KeyStore, TenantConfig
 from app.config import Settings
 from app.errors import EmbeddingConfigMismatch
@@ -28,6 +29,8 @@ class Services:
     pool: AsyncConnectionPool
     redis: Any
     keystore: KeyStore
+    authfail: Any
+    trusted_nets: list
     limiter: RateLimiter
     vectors: VectorStore
     sparse: Any
@@ -145,12 +148,15 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
         checkpointer = AsyncPostgresSaver(pool)  # tables created by `python -m app.db.migrate`
 
     svc = Services(
-        settings=s, breakers=breakers, pool=pool, redis=redis, keystore=KeyStore(pool, ov.get("key_cache_ttl", 10.0)),
+        settings=s, breakers=breakers, pool=pool, redis=redis, keystore=KeyStore(pool, ov.get("key_cache_ttl", s.key_cache_ttl_s), redis, ov.get("key_neg_ttl", s.key_neg_ttl_s), s.key_cache_size),
+        authfail=AuthFailLimiter(redis, s.auth_fail_per_min), trusted_nets=parse_trusted(s.trusted_proxies),
         limiter=RateLimiter(redis, workers=s.web_concurrency), vectors=vectors, sparse=sparse, semcache=SemanticCache(qclient, s),
         tenant_config=TenantConfig(pool, s.assistant_domain, s.tenant_config_ttl_s), embedder=embedder, llm=llm, reranker=reranker,
         guard=guard, checkpointer=checkpointer, _closers=closers,
     )
     svc.graph = build_graph(svc, checkpointer)
+    await svc.keystore.start_listener()  # instant revocation fan-out
+    closers.append(svc.keystore.stop_listener)
     return svc
 
 

@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     chunk_min_tokens: int = Field(200, ge=1)  # a new heading only starts a new chunk once the current one has this many
     max_context_chars: int = 25_000
 
+    # --- auth lookup cost ---
+    key_cache_ttl_s: float = 30.0  # valid-key LRU TTL (revocation also evicts immediately via Redis pub/sub)
+    key_cache_size: int = Field(10_000, ge=1)
+    key_neg_ttl_s: int = 60  # an unknown key hash is remembered in Redis this long (no Postgres lookup)
+    auth_fail_per_min: int = Field(20, ge=1)  # failed-auth attempts per client IP per minute before 429
+    trusted_proxies: str = ""  # comma-separated IPs/CIDRs allowed to set X-Forwarded-For
+
     # --- memory ---
     memory_ttl_days: int = Field(30, ge=1)
     planner_cache_ttl_s: int = 3600

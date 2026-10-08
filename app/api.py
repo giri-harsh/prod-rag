@@ -14,6 +14,7 @@ from prometheus_client import CollectorRegistry
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, ConfigDict
 
+from app.auth.guard import client_ip
 from app.auth.keys import Principal
 from app.config import Settings, load_settings
 from app.container import Services, build_services
@@ -202,12 +203,21 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         return request.app.state.svc
 
     async def authenticate(request: Request) -> Principal:
+        svc = svc_of(request)
         raw = request.headers.get("x-api-key")
-        if not raw:
-            raise HTTPException(401, "missing API key", headers={"WWW-Authenticate": "ApiKey"})
-        p = await svc_of(request).keystore.lookup(raw)
+        ip = client_ip(request.client.host if request.client else None, request.headers.get("x-forwarded-for"), svc.trusted_nets)
+        if raw and (p := svc.keystore.peek(raw)) is not None:  # hot path: no I/O at all
+            request.state.principal = p
+            return p
+        too_many = HTTPException(429, "too many failed authentication attempts", headers={"Retry-After": str(svc.authfail.retry_after())})
+        if await svc.authfail.exceeded(ip):  # penalty box: skip every lookup for this IP
+            raise too_many
+        p = await svc.keystore.lookup(raw) if raw else None
         if p is None:
-            raise HTTPException(401, "invalid API key", headers={"WWW-Authenticate": "ApiKey"})
+            n = await svc.authfail.record_failure(ip)
+            if n > svc.authfail.limit:
+                raise too_many
+            raise HTTPException(401, "missing API key" if not raw else "invalid API key", headers={"WWW-Authenticate": "ApiKey"})
         request.state.principal = p
         return p
 
