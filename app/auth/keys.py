@@ -85,6 +85,7 @@ def list_keys(database_url: str) -> list[tuple]:
 
 
 # ---- async lookup (request path) --------------------------------------------------------------
+log = logging.getLogger(__name__)
 EVICT_CHANNEL = "auth:evict"
 NEG_PREFIX = "auth:neg:"
 
@@ -156,8 +157,8 @@ class KeyStore:
                     if await self._redis.exists(NEG_PREFIX + h):
                         self._local_neg[h] = now + min(self._neg_ttl, 5)
                         return None
-                except Exception:
-                    pass  # Redis is an optimisation here
+                except Exception as e:  # Redis is an optimisation here
+                    log.debug("negative-cache read failed: %s", type(e).__name__)
         self.pg_lookups += 1
         async with self._pool.connection() as conn:
             cur = await conn.execute(
@@ -174,8 +175,8 @@ class KeyStore:
                 if self._redis is not None:
                     try:
                         await self._redis.set(NEG_PREFIX + h, "1", ex=self._neg_ttl)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log.debug("negative-cache write failed: %s", type(e).__name__)
             return None
         row = tuple(row.values()) if isinstance(row, dict) else row
         p = Principal(str(row[0]), row[1], row[2], row[3], row[4], row[5], tuple(row[6] or ()))
@@ -204,8 +205,8 @@ class KeyStore:
         finally:
             try:
                 await ps.aclose()
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("pubsub close failed: %s", type(e).__name__)
 
     async def stop_listener(self) -> None:
         if self._listener:

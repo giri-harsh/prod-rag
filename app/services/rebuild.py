@@ -125,8 +125,8 @@ class RebuildCoordinator:
         if h.pg_conn is not None:
             try:
                 await h.pg_conn.close()  # closing the session releases the advisory lock
-            except Exception:
-                pass
+            except Exception as e:
+                logfire.warn("closing the advisory-lock connection failed", error=str(e))
             return
         try:
             if _s(await self._r.get(self.lock_key)) == h.token:
