@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     fused_k: int = Field(20, ge=1)  # after server-side RRF fusion
     final_k: int = Field(5, ge=1)  # after rerank, sent to the LLM
     rerank_min_score: float = 0.05  # top rerank score below this => grade fails (rewrite + retry)
+    rerank_workers: int = Field(2, ge=1)  # bounded thread pool for the ONNX reranker (per process)
+    rerank_threads: int = Field(1, ge=1)  # ONNX intra-op threads per rerank batch (avoid CPU oversubscription)
+    rerank_max_length: int = Field(512, ge=32, le=512)  # passages are truncated to this many tokens before scoring
+    rerank_timeout_s: float = 10.0
+    loadtest_real_reranker: bool = False  # APP_ENV=loadtest: use the real FlashRank instead of the no-op
     max_retrieval_iterations: int = Field(2, ge=1, le=5)
     sparse_backend: Literal["bm25", "simple"] = "bm25"  # fastembed Qdrant/bm25, or built-in hashing tokenizer + IDF
     # --- chunking ---

@@ -1,6 +1,6 @@
 FROM python:3.11-slim-bookworm
 
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PORT=8080 METRICS_PORT=9100 HOME=/tmp FASTEMBED_CACHE_PATH=/opt/fastembed
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PORT=8080 METRICS_PORT=9100 HOME=/tmp FLASHRANK_CACHE=/opt/flashrank FASTEMBED_CACHE_PATH=/opt/fastembed
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libgomp1 curl \
     && rm -rf /var/lib/apt/lists/*

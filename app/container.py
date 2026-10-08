@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -118,7 +119,7 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
     sparse = ov.get("sparse") or make_sparse_encoder(s.sparse_backend)
     if "reranker" in ov:
         reranker = ov["reranker"]
-    elif loadtest and not ov.get("real_reranker"):
+    elif loadtest and not (ov.get("real_reranker") or s.loadtest_real_reranker):
         from app.services.reranker import NoopReranker
 
         reranker = NoopReranker()
@@ -126,7 +127,11 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
         from app.services.reranker import FlashRankReranker, NoopReranker
 
         try:
-            reranker = await asyncio.to_thread(FlashRankReranker)
+            reranker = await asyncio.to_thread(
+                FlashRankReranker, os.environ.get("FLASHRANK_CACHE", "/opt/flashrank"),
+                s.rerank_workers, s.rerank_threads, s.rerank_max_length, s.rerank_timeout_s,
+            )
+            closers.append(_close_reranker(reranker))
         except Exception as e:
             logfire.error("FlashRank unavailable; reranking disabled", error=str(e))
             reranker = NoopReranker()
@@ -158,6 +163,13 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
     await svc.keystore.start_listener()  # instant revocation fan-out
     closers.append(svc.keystore.stop_listener)
     return svc
+
+
+def _close_reranker(r):
+    async def _c():
+        r.close()
+
+    return _c
 
 
 async def _close_all(closers):
