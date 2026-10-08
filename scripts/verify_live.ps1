@@ -36,6 +36,8 @@ $tenant = "verifylive"
 if ($LASTEXITCODE -ne 0) { Fail "migrations failed" }
 $key = (& $py -m app.auth.cli create --tenant $tenant --user tester --scope eval --label verify_live 2>$null | Select-Object -Last 1)
 if (-not $key) { Fail "could not create an API key" }
+& $py -m app.auth.cli tenant-set --tenant $tenant --domain "Kubernetes (architecture, Jobs, CronJobs, autoscaling, work queues), container workloads and Databricks job automation" *> $null
+if ($LASTEXITCODE -ne 0) { Fail "could not set the tenant domain" }
 & $py -m app.ingestion.cli DATA/true_data --tenant $tenant --source-type true *> $null
 if ($LASTEXITCODE -ne 0) { Fail "ingestion of DATA/true_data failed (Gemini key valid? Qdrant reachable?)" }
 $env:LIVE_TENANT = $tenant; $env:LIVE_API_KEY = $key

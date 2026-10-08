@@ -336,3 +336,27 @@ def test_numbered_list_items_do_not_hijack_heading_paths_in_markdown_docs():
     assert all(p.startswith("Guide") for p in paths) and not any("Failed Jobs" in p for p in paths)
     pdf_like = "1.2 Scheduling\n\nbody text here\n\n1.3 Networking\n\nmore body"  # no markdown headings: numbered headings still work
     assert any(c.heading_path.startswith("1.") for c in split_pages([(1, pdf_like)], 900, 0.15, 1))
+
+
+async def test_planner_never_answers_a_first_turn_technical_question_conversationally(make_app, new_key, seed_docs):
+    import json
+
+    from tests.conftest import FakeLLM
+
+    class Wrong(FakeLLM):  # a model that (as seen live) labels a technical first-turn question "conversational"
+        async def complete(self, system, user, *, feature, temperature=0.0, fast=False):
+            if feature == "planner":
+                self.calls.append((feature, system, user, fast))
+                from app.services.llm import LLMResult
+
+                return LLMResult(json.dumps({"intent": "conversational", "query": "kubernetes pods scheduled", "standalone": True}))
+            return await super().complete(system, user, feature=feature, temperature=temperature, fast=fast)
+
+    t, k = new_key()
+    llm = Wrong()
+    async with make_app(llm=llm) as e:
+        await seed_docs(e, t, {"a.txt": "pods nodes scheduler kubernetes " * 20})
+        j = (await e.client.post("/query", json={"q": "How are pods scheduled onto nodes?", "session_id": "s1"}, headers=H(k))).json()
+        assert j["iterations"] >= 1 and j["sources"] == ["a.txt"]  # it searched instead of chatting
+        g = (await e.client.post("/query", json={"q": "thanks!", "session_id": "s2"}, headers=H(k))).json()
+        assert g["iterations"] == 0  # a real greeting is not forced into a search (the override only applies to non-greetings)

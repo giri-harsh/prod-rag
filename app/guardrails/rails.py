@@ -174,7 +174,8 @@ class Guardrails:
                                            context=ctx, llm=self._adapter, config=rails.config)
 
         try:
-            out = await call_upstream(self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=2, wait_max_s=1.0)
+            out = await call_upstream(self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=3, wait_max_s=1.0,
+                retry_after_cap_s=self._s.retry_after_cap_s)
         except Exception as e:  # includes timeouts and CircuitOpen -> fail closed
             raise GuardrailUnavailable(f"{type(e).__name__}: {e}") from e
         if getattr(out, "failed", False):
@@ -196,7 +197,8 @@ class Guardrails:
 
         try:
             res = await call_upstream(
-                self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=2, wait_max_s=1.0
+                self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=3, wait_max_s=1.0,
+                retry_after_cap_s=self._s.retry_after_cap_s
             )
         except GuardrailUnavailable:
             raise

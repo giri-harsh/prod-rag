@@ -73,7 +73,7 @@ async def test_primary_key_and_model_used_with_reasoning_effort(monkeypatch):
     r = await llm.complete("sys", "usr", feature="t")
     assert r.text == "hello" and r.prompt_tokens == 5
     (key, kw), = calls
-    assert key == "PRIMARY" and kw["model"] == "openai/gpt-oss-120b" and kw["reasoning_effort"] == "low" and kw["max_completion_tokens"] == 2048
+    assert key == "PRIMARY" and kw["model"] == "openai/gpt-oss-120b" and kw["reasoning_effort"] == "low" and kw["max_completion_tokens"] == 1200
     await llm.complete("sys", "usr", feature="t", fast=True)
     assert calls[-1][1]["model"] == "openai/gpt-oss-20b"  # fast=True => the cheap model (query rewriting)
 
@@ -104,7 +104,7 @@ async def test_bad_request_does_not_burn_the_fallback_key(monkeypatch):
 async def test_retries_with_backoff_then_breaker_opens(monkeypatch):
     calls = make_fake_groq(monkeypatch, {"PRIMARY": [StatusErr(503)], "FALLBACK": [StatusErr(503)]})
     br = Breakers(2, 30)  # opens after 2 failed CALLS
-    llm = GroqDirectLLM(settings(), br)
+    llm = GroqDirectLLM(settings(llm_model_failover=False), br)
     for _ in range(2):
         with pytest.raises(StatusErr):
             await llm.complete("s", "u", feature="t")
@@ -118,7 +118,7 @@ async def test_retries_with_backoff_then_breaker_opens(monkeypatch):
 
 async def test_single_key_still_works_and_errors_propagate(monkeypatch):
     calls = make_fake_groq(monkeypatch, {"PRIMARY": [StatusErr(429)]})
-    llm = GroqDirectLLM(settings(groq_fallback_api_key=None, max_attempts=1), Breakers(5, 30))
+    llm = GroqDirectLLM(settings(groq_fallback_api_key=None, max_attempts=1, llm_model_failover=False), Breakers(5, 30))
     with pytest.raises(StatusErr):
         await llm.complete("s", "u", feature="t")
     assert len(calls) == 1
@@ -161,3 +161,33 @@ async def test_guard_llm_fails_over_between_keys():
     assert FailoverChat(models=[Boom(responses=["x"]), good]).invoke("hi").content == "No"
     with pytest.raises(StatusErr):  # every key failing => error => the rails fail closed (503) upstream
         await FailoverChat(models=[Boom(responses=["x"]), Boom(responses=["y"])]).ainvoke("hi")
+
+
+async def test_model_failover_after_both_keys_fail_because_limits_are_per_model(monkeypatch):
+    calls = make_fake_groq(monkeypatch, {"PRIMARY": [StatusErr(429), "cheap model answer"], "FALLBACK": [StatusErr(429), "cheap model answer"]})
+    r = await GroqDirectLLM(settings(), Breakers(5, 30)).complete("s", "u", feature="t")
+    assert r.text == "cheap model answer"
+    assert [(c[0], c[1]["model"]) for c in calls] == [
+        ("PRIMARY", "openai/gpt-oss-120b"), ("FALLBACK", "openai/gpt-oss-120b"), ("PRIMARY", "openai/gpt-oss-20b")]
+
+
+async def test_fast_calls_only_use_the_cheap_model_and_planner_gets_a_small_token_cap(monkeypatch):
+    calls = make_fake_groq(monkeypatch, {"PRIMARY": ["x"], "FALLBACK": ["x"]})
+    llm = GroqDirectLLM(settings(), Breakers(5, 30))
+    await llm.complete("s", "u", feature="planner", fast=True)
+    assert calls[0][1]["model"] == "openai/gpt-oss-20b" and calls[0][1]["max_completion_tokens"] == 512
+    await llm.complete("s", "u", feature="rewrite", fast=True)
+    assert calls[1][1]["max_completion_tokens"] == 256
+
+
+async def test_rate_limit_hint_is_honoured_for_the_retry(monkeypatch):
+    import time
+
+    err = StatusErr(429)
+    err.args = ("Rate limit reached ... Please try again in 0.4s. Need more tokens?",)
+    calls = make_fake_groq(monkeypatch, {"PRIMARY": [err, "ok after wait"], "FALLBACK": [err, "ok after wait"]})
+    llm = GroqDirectLLM(settings(llm_model_failover=False, retry_after_cap_s=2.0), Breakers(5, 30))
+    t0 = time.perf_counter()
+    r = await llm.complete("s", "u", feature="t")
+    assert r.text == "ok after wait" and time.perf_counter() - t0 >= 0.38  # waited for the provider's hint, not the ~0.1 s jitter
+    assert len(calls) == 3

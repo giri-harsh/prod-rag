@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     use_gateway: bool = True  # False: call Groq directly (no Portkey); primary->fallback KEY failover is done in code
     groq_fallback_api_key: SecretStr | None = None
     llm_reasoning_effort: str = "low"  # sent only to openai/gpt-oss-* models
-    llm_max_tokens: int = Field(2048, ge=16)  # max_completion_tokens (reasoning models spend part of it thinking)
+    llm_max_tokens: int = Field(1200, ge=16)  # max_completion_tokens (reasoning models spend part of it thinking)
     groq_slug: str = "rag"
     groq_slug_fallback: str = "brag"
     llm_primary_model: str = "llama-3.3-70b-versatile"
@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     embed_timeout_s: float = 10.0
     qdrant_timeout_s: float = 5.0
     max_attempts: int = Field(3, ge=1, le=5)
+    retry_after_cap_s: float = 15.0  # longest we will wait on a provider's Retry-After / "try again in Ns" hint (0 = ignore hints)
+    llm_model_failover: bool = True  # direct mode: after the keys fail, fall back to LLM_FALLBACK_MODEL (rate limits are per model)
     breaker_failures: int = 5
     breaker_reset_s: float = 30.0
 

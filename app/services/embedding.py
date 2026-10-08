@@ -39,6 +39,7 @@ class GeminiEmbedder:
         v = await call_upstream(
             self._breaker, lambda: self._client.aembed_query(text),
             timeout_s=self._s.embed_timeout_s, attempts=self._s.max_attempts,
+            retry_after_cap_s=self._s.retry_after_cap_s,
         )
         return self._check(_normalize(v))
 
@@ -49,6 +50,7 @@ class GeminiEmbedder:
             vs = await call_upstream(
                 self._breaker, lambda b=batch: self._client.aembed_documents(b),
                 timeout_s=self._s.embed_timeout_s * 3, attempts=self._s.max_attempts,
+                retry_after_cap_s=self._s.retry_after_cap_s,
             )
             out.extend(self._check(_normalize(v)) for v in vs)
         return out

@@ -75,3 +75,11 @@ CLAUDE.md
 
 # overnight-run state (local only)
 _night/
+
+# local run artifacts
+live_results.json
+live_report.md
+live_pytest.log
+docker_report.md
+docker_*.log
+docker_query.json

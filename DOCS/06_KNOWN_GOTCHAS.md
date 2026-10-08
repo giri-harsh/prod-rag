@@ -19,3 +19,4 @@
 * Qdrant local mode (`:memory:`) ignores payload indexes and its `count()` is stale after filtered deletes; use a server for realistic checks. `fakeredis`' TCP server cannot run arq and does not deliver pub/sub, so those two tests need `REDIS_INTEGRATION_URL`.
 * Heavy models are loaded during startup (`build_services`: FlashRank and NeMo rails in worker threads), so a worker is not ready until they are; `/readyz` reports it. Startup time was not measured.
 * Under `APP_ENV=loadtest` the LLM, embedder and guard model are fakes with simulated latency (real datastores).
+* **Windows + `localhost`**: libpq tries `::1` before `127.0.0.1`; if the database only listens on IPv4 each connect can stall for the full connect timeout (observed: 10 s). Use `127.0.0.1` in `DATABASE_URL`/`REDIS_URL`/`QDRANT_URL` on such hosts (the app's pool uses `connect_timeout=5`).

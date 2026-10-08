@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
@@ -51,6 +52,27 @@ class CircuitBreaker:
             logfire.warn("circuit opened", upstream=self.name)
 
 
+_HINT_RE = re.compile(r"(?:try again|retry) in\s+(?:(\d+)m)?\s*(\d+(?:\.\d+)?)\s*(ms|s)\b", re.I)
+
+
+def retry_after_hint(exc: BaseException | None) -> float | None:
+    """Seconds the provider asked us to wait: the Retry-After header (groq/httpx/google errors expose .response.headers)
+    or the "Please try again in 10.095s" text Groq puts in 429 bodies. None if absent."""
+    if exc is None:
+        return None
+    headers = getattr(getattr(exc, "response", None), "headers", None) or getattr(exc, "headers", None)
+    try:
+        if headers and (v := headers.get("retry-after") or headers.get("Retry-After")):
+            return max(0.0, float(v))
+    except (TypeError, ValueError, AttributeError):
+        pass
+    m = _HINT_RE.search(str(exc))
+    if m:
+        secs = float(m.group(2)) + (60 * int(m.group(1)) if m.group(1) else 0)
+        return secs / 1000 if m.group(3).lower() == "ms" else secs
+    return None
+
+
 def is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, CircuitOpen):
         return False
@@ -70,16 +92,28 @@ async def call_upstream(
     timeout_s: float,
     attempts: int = 3,
     wait_max_s: float = 4.0,
+    retry_after_cap_s: float = 0.0,
 ) -> T:
     """Run fn() under a hard timeout; retry with jittered exponential backoff on 429/5xx/timeouts.
 
     The breaker counts one failure per *call* (after retries are exhausted), not per attempt.
+    With `retry_after_cap_s` > 0 a provider hint (Retry-After / "try again in 10s") replaces the short jittered wait, capped at that value.
     """
+    base_wait = wait_random_exponential(multiplier=0.25, max=wait_max_s)
+
+    def wait(rs):
+        w = base_wait(rs)
+        if retry_after_cap_s > 0 and rs.outcome is not None:
+            hint = retry_after_hint(rs.outcome.exception())
+            if hint is not None:
+                w = max(w, min(hint, retry_after_cap_s))
+        return w
+
     breaker.before_call()
     try:
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(attempts),
-            wait=wait_random_exponential(multiplier=0.25, max=wait_max_s),
+            wait=wait,
             retry=retry_if_exception(is_retryable),
             reraise=True,
         ):

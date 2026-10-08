@@ -61,7 +61,7 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
 
     pool = AsyncConnectionPool(
         s.database_url, min_size=1, max_size=int(ov.get("pg_pool_max", s.pg_pool_max)), open=False,
-        kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+        kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row, "connect_timeout": 5},
     )
     await pool.open()
     closers.append(pool.close)

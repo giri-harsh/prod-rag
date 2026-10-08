@@ -249,3 +249,50 @@ async def test_cancelled_half_open_probe_does_not_wedge_the_breaker():
 
     assert await call_upstream(br, ok, timeout_s=1, attempts=1) == 1  # a new probe is allowed
     assert br.state == "closed"
+
+
+def test_retry_after_hint_parsing():
+    from app.resilience import retry_after_hint
+
+    class WithHeaders(Exception):
+        response = type("R", (), {"headers": {"retry-after": "7"}})()
+
+    assert retry_after_hint(WithHeaders()) == 7.0
+    assert retry_after_hint(Exception("Rate limit ... Please try again in 10.095s. Need more tokens")) == pytest.approx(10.095)
+    assert retry_after_hint(Exception("try again in 1m5.5s")) == pytest.approx(65.5)
+    assert retry_after_hint(Exception("retry in 250ms")) == pytest.approx(0.25)
+    assert retry_after_hint(Exception("boom")) is None and retry_after_hint(None) is None
+
+
+async def test_call_upstream_waits_for_the_hint_but_never_beyond_the_cap():
+    import time
+
+    n = {"c": 0}
+
+    class E429(Exception):
+        status_code = 429
+
+    async def f():
+        n["c"] += 1
+        if n["c"] == 1:
+            raise E429("Rate limit. Please try again in 0.5s.")
+        return "ok"
+
+    t0 = time.perf_counter()
+    assert await call_upstream(CircuitBreaker("t"), f, timeout_s=2, attempts=2, wait_max_s=0.01, retry_after_cap_s=2.0) == "ok"
+    assert time.perf_counter() - t0 >= 0.48
+    n["c"] = 0
+
+    async def g():
+        n["c"] += 1
+        if n["c"] == 1:
+            raise E429("Rate limit. Please try again in 60s.")  # hint far above the cap
+        return "ok"
+
+    t0 = time.perf_counter()
+    assert await call_upstream(CircuitBreaker("t"), g, timeout_s=2, attempts=2, wait_max_s=0.01, retry_after_cap_s=0.3) == "ok"
+    assert 0.28 <= time.perf_counter() - t0 < 1.0  # capped
+    n["c"] = 0
+    t0 = time.perf_counter()
+    assert await call_upstream(CircuitBreaker("t"), f, timeout_s=2, attempts=2, wait_max_s=0.01) == "ok"  # cap 0 => hints ignored
+    assert time.perf_counter() - t0 < 0.3

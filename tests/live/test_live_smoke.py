@@ -18,10 +18,10 @@ import pytest
 from dotenv import dotenv_values
 
 ENV = {**dotenv_values(".env"), **os.environ}
-HAVE_KEYS = all(ENV.get(k) for k in ("GROQ_API_KEY", "PORTKEY_API_KEY", "GEMINI_API_KEY"))
+HAVE_KEYS = all(ENV.get(k) for k in ("GROQ_API_KEY", "GEMINI_API_KEY"))  # PORTKEY_API_KEY is optional (direct-Groq mode)
 pytestmark = [
     pytest.mark.live,
-    pytest.mark.skipif(not HAVE_KEYS, reason="UNVERIFIED-NEEDS-KEYS: GROQ/PORTKEY/GEMINI keys not in .env"),
+    pytest.mark.skipif(not HAVE_KEYS, reason="UNVERIFIED-NEEDS-KEYS: GROQ/GEMINI keys not in .env"),
 ]
 
 REPORT = pathlib.Path(os.environ.get("LIVE_REPORT_JSON", "live_results.json"))
@@ -128,7 +128,7 @@ async def test_live_end_to_end():
     noisy = sorted(pathlib.Path("DATA/noisy_data").glob("*.txt"))[:10]
     st = Stages()
     async with LifespanManager(app) as mgr:
-        svc = mgr.app.state.svc
+        svc = app.state.svc
         guard_calls = {"n": 0}
 
         def budgeted(obj, name):  # every rail check is one Groq call: count it against its own hard budget

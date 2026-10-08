@@ -68,13 +68,17 @@ class PortkeyLLM:
 
         async with self._sem:
             resp = await call_upstream(
-                self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=self._s.max_attempts
+                self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=self._s.max_attempts,
+                retry_after_cap_s=self._s.retry_after_cap_s,
             )
         usage = getattr(resp, "usage", None)
         pt, ct = getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0
         LLM_TOKENS.labels(feature, "prompt").inc(pt)
         LLM_TOKENS.labels(feature, "completion").inc(ct)
         return LLMResult(resp.choices[0].message.content or "", pt, ct)
+
+
+FEATURE_MAX_TOKENS = {"planner": 512, "rewrite": 256}
 
 
 def failover_worthy(exc: BaseException) -> bool:
@@ -100,28 +104,33 @@ class GroqDirectLLM:
             raise RuntimeError("GROQ_API_KEY is required when USE_GATEWAY=false")
         self._clients = [AsyncGroq(api_key=k.get_secret_value(), timeout=s.llm_timeout_s, max_retries=0) for k in keys]
 
-    def _kwargs(self, model: str, msgs: list, temperature: float) -> dict:
-        kw = {"model": model, "messages": msgs, "temperature": temperature, "max_completion_tokens": self._s.llm_max_tokens}
+    def _kwargs(self, model: str, msgs: list, temperature: float, feature: str = "") -> dict:
+        cap = FEATURE_MAX_TOKENS.get(feature, self._s.llm_max_tokens)  # smaller asks count less against provider TPM limits
+        kw = {"model": model, "messages": msgs, "temperature": temperature, "max_completion_tokens": min(cap, self._s.llm_max_tokens)}
         if model.startswith("openai/gpt-oss") and self._s.llm_reasoning_effort:
             kw["reasoning_effort"] = self._s.llm_reasoning_effort
         return kw
 
     async def complete(self, system: str, user: str, *, feature: str, temperature: float = 0.0, fast: bool = False) -> LLMResult:
         msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        model = self._s.llm_fallback_model if fast else self._s.llm_primary_model
-        kw = self._kwargs(model, msgs, temperature)
+        models = [self._s.llm_fallback_model] if fast else [self._s.llm_primary_model]
+        if not fast and self._s.llm_model_failover and self._s.llm_fallback_model not in models:
+            models.append(self._s.llm_fallback_model)  # provider limits are per model: the cheaper model has its own budget
+        targets = [(c, m) for m in models for c in self._clients]  # every key on the primary model first, then the cheaper model
+        model = models[0]
 
         async def _call():
-            for i, client in enumerate(self._clients):
+            for i, (client, m) in enumerate(targets):
                 try:
-                    return await client.chat.completions.create(**kw)
+                    return await client.chat.completions.create(**self._kwargs(m, msgs, temperature, feature))
                 except Exception as e:
-                    if i == len(self._clients) - 1 or not failover_worthy(e):
+                    if i == len(targets) - 1 or not failover_worthy(e):
                         raise
                     LLM_FAILOVER.labels(type(e).__name__).inc()
 
         async with self._sem:
-            resp = await call_upstream(self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=self._s.max_attempts)
+            resp = await call_upstream(self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=self._s.max_attempts,
+                                       retry_after_cap_s=self._s.retry_after_cap_s)
         usage = getattr(resp, "usage", None)
         pt, ct = getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0
         LLM_TOKENS.labels(feature, "prompt").inc(pt)

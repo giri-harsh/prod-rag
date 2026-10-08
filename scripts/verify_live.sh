@@ -32,6 +32,7 @@ rm -f "$LIVE_REPORT_JSON" live_report.md
 TENANT=verifylive
 "$PY" -m app.db.migrate >/dev/null || fail "migrations failed"
 KEY=$("$PY" -m app.auth.cli create --tenant "$TENANT" --user tester --scope eval --label verify_live 2>/dev/null | tail -1)
+"$PY" -m app.auth.cli tenant-set --tenant "$TENANT" --domain "Kubernetes (architecture, Jobs, CronJobs, autoscaling, work queues), container workloads and Databricks job automation" >/dev/null 2>&1 || fail "could not set the tenant domain"
 [ -n "$KEY" ] || fail "could not create an API key"
 "$PY" -m app.ingestion.cli DATA/true_data --tenant "$TENANT" --source-type true >/dev/null || fail "ingestion of DATA/true_data failed (Gemini key valid? Qdrant reachable?)"
 export LIVE_TENANT="$TENANT" LIVE_API_KEY="$KEY"
