@@ -76,6 +76,12 @@ CLAUDE.md
 # overnight-run state (local only)
 _night/
 
+# web client (./web): deps and build/test output are never committed
+node_modules/
+web/test-results/
+web/playwright-report/
+web/.vite/
+
 # local run artifacts
 live_results.json
 live_report.md
