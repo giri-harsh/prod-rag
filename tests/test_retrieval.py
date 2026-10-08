@@ -308,3 +308,23 @@ async def test_guard_engines_agree_on_structured_results(settings, engine):
     r = await g.check_output("q", "a bad answer")
     assert r.blocked and r.rail == "self check output"
     assert (await g.check_output("q", "fine")).blocked is False
+
+
+async def test_real_flashrank_scores_separate_relevant_from_irrelevant(tmp_path):
+    """Runs the real ONNX reranker (downloads ~3 MB on first use); skipped when it cannot load."""
+    from app.services.reranker import FlashRankReranker
+
+    try:
+        rr = FlashRankReranker(cache_dir=str(tmp_path))
+    except Exception as e:
+        pytest.skip(f"FlashRank model unavailable: {e}")
+    docs = [
+        "The Horizontal Pod Autoscaler scales the number of pods based on observed CPU utilization.",
+        "A CronJob creates Jobs on a repeating schedule.",
+        "The weather in Paris is sunny today.",
+    ]
+    ranked = await rr.rerank("How does the pod autoscaler decide when to scale?", docs, 3)
+    assert ranked[0][0] == docs[0] and ranked[0][1] > 0.5
+    assert all(score < 0.05 for _, score in ranked[1:])  # below RERANK_MIN_SCORE => would not satisfy the grade
+    off = await rr.rerank("what is the capital of France", docs, 3)
+    assert off[0][1] < 0.05  # an off-topic query never passes grading, so the loop ends with the fixed answer
