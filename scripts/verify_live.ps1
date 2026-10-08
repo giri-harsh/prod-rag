@@ -1,5 +1,7 @@
 # Verify the system against REAL Groq / Portkey / Gemini.   powershell -ExecutionPolicy Bypass -File scripts\verify_live.ps1
-# Needs .env with GROQ_API_KEY, PORTKEY_API_KEY, GEMINI_API_KEY (values are never printed). Idempotent; exits non-zero with one line on failure.
+# Needs .env with GROQ_API_KEY and GEMINI_API_KEY (values are never printed). A non-empty PORTKEY_API_KEY switches the run to gateway mode
+# (USE_GATEWAY=true + the Portkey fallback test); otherwise Groq is called directly (USE_GATEWAY=false, fallback test SKIPPED-NO-PORTKEY).
+# Idempotent; exits non-zero with one line on failure.
 $ErrorActionPreference = "Continue"
 Set-Location (Join-Path $PSScriptRoot "..")
 function Fail($msg) { [Console]::Error.WriteLine("verify_live FAILED: $msg"); exit 1 }
@@ -11,7 +13,9 @@ function EnvVal($k) {
     $v = ($line -replace "^[^=]*=", "") -replace "\s+#.*$", ""
     return $v.Trim().Trim('"').Trim("'")
 }
-foreach ($k in "GROQ_API_KEY", "PORTKEY_API_KEY", "GEMINI_API_KEY") { if (-not (EnvVal $k)) { Fail "$k is empty in .env" } }
+foreach ($k in "GROQ_API_KEY", "GEMINI_API_KEY") { if (-not (EnvVal $k)) { Fail "$k is empty in .env" } }
+if ((EnvVal "PORTKEY_API_KEY") -or $env:PORTKEY_API_KEY) { $env:USE_GATEWAY = "true"; $mode = "gateway" } else { $env:USE_GATEWAY = "false"; $mode = "direct-groq" }
+Write-Host "mode: $mode (USE_GATEWAY=$($env:USE_GATEWAY))"
 
 $py = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } elseif ($env:PYTHON) { $env:PYTHON } else { "python" }
 & $py -c "import app.config" 2>$null

@@ -14,8 +14,12 @@ trap cleanup EXIT
 
 env_val() { [ -f .env ] && grep -E "^[[:space:]]*$1[[:space:]]*=" .env | tail -1 | sed -E "s/^[^=]*=//; s/[[:space:]]+#.*$//; s/^[[:space:]\"']+//; s/[[:space:]\"']+$//"; }
 MODE="REAL models (keys found in .env)"
-for k in GROQ_API_KEY PORTKEY_API_KEY GEMINI_API_KEY; do [ -n "$(env_val $k)" ] || MODE="FAKE models (APP_ENV=loadtest; no API keys in .env)"; done
-case "$MODE" in FAKE*) export APP_ENV=loadtest ;; *) export APP_ENV=dev ;; esac
+for k in GROQ_API_KEY GEMINI_API_KEY; do [ -n "$(env_val $k)" ] || MODE="FAKE models (APP_ENV=loadtest; GROQ/GEMINI keys missing in .env)"; done
+case "$MODE" in
+  FAKE*) export APP_ENV=loadtest ;;
+  *) export APP_ENV=dev
+     if [ -n "$(env_val PORTKEY_API_KEY)" ]; then export USE_GATEWAY=true; MODE="$MODE, Portkey gateway"; else export USE_GATEWAY=false; MODE="$MODE, direct Groq (no PORTKEY_API_KEY)"; fi ;;
+esac
 { echo "# Docker verification report"; echo; echo "- mode: $MODE"; echo "- date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo; } > "$REPORT"
 
 cleanup

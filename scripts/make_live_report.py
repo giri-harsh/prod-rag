@@ -12,6 +12,7 @@ e = d.get("end_to_end")
 if not e:
     sys.exit("make_live_report: end_to_end results missing (the live end-to-end test failed or was skipped)")
 pf = d.get("portkey_fallback", {})
+df = d.get("direct_key_failover", {})
 
 L = ["# Live verification report", "",
      "Real Groq / Portkey / Gemini, real Postgres / Redis / Qdrant. Numbers below come from this run only.", "",
@@ -21,8 +22,11 @@ L = ["# Live verification report", "",
      f"| off-topic (should be refused) | {e['off_topic']['n']} | {e['off_topic']['passed_through']} answered | **false-pass {e['off_topic']['false_pass_rate_pct']}%** |",
      f"| jailbreak / injection (should be refused) | {e['attacks']['n']} | {e['attacks']['passed_through']} answered | **false-pass {e['attacks']['false_pass_rate_pct']}%** |",
      f"| noisy-data questions | {e['noisy']['n']} | {e['noisy']['answered']} answered | n/a |", "",
-     "## Portkey fallback (primary slug forced invalid)", "",
-     f"- result: **{'PASS' if pf.get('ok') else 'FAIL / not run'}**" + (f", latency {pf.get('latency_ms')} ms" if pf.get("latency_ms") else "") + (f", error {pf.get('error')}: {pf.get('detail')}" if pf.get("error") else ""), "",
+     f"## Run mode: **{e.get('mode', '?')}**   models: `{e.get('models', {})}`", "",
+     "## Portkey fallback (gateway mode; primary slug forced invalid)", "",
+     f"- result: **{pf.get('status') or ('PASS' if pf.get('ok') else 'not run')}**" + (f", latency {pf.get('latency_ms')} ms" if pf.get("latency_ms") else "") + (f", error {pf.get('error')}: {pf.get('detail')}" if pf.get("error") else ""), "",
+     "## Direct-Groq key failover (primary key forced invalid -> GROQ_FALLBACK_API_KEY)", "",
+     f"- result: **{df.get('status') or 'not run'}**" + (f", latency {df.get('latency_ms')} ms" if df.get("latency_ms") else "") + (f", error {df.get('error')}: {df.get('detail')}" if df.get("error") else ""), "",
      "## Groundedness spot checks", "",
      "`overlap` = share of the answer's content words found in the retrieved context (a heuristic - read the answers yourself).", ""]
 for s in e["groundedness_spot_checks"]:
@@ -32,7 +36,7 @@ L += ["", "## Latency", "", f"Per request (all {sum(e[k]['n'] for k in ('true_da
 for k, v in sorted(e["latency_stages"].items()):
     L.append(f"| {k} | {v['n']} | {v['mean_ms']} | {v['p95_ms']} |")
 b = e["budget"]
-L += ["", "## Budget", "", f"- LLM calls by the test: {b['llm_calls_used_by_test']} / {b['llm_budget']}; embeddings by the test: {b['embeddings_used_by_test']} / {b['embedding_budget']}"
+L += ["", "## Budget", "", f"- chat completions by the test: {b['llm_calls_used_by_test']} / {b['llm_budget']}; guard-model calls: {b.get('guard_calls_used', '?')} / {b.get('guard_budget', '?')}; embeddings by the test: {b['embeddings_used_by_test']} / {b['embedding_budget']}"
       + (" (sample data was ingested beforehand by the verify script)." if e.get("tenant_preingested") else ".")]
 dst.write_text("\n".join(L) + "\n", encoding="utf-8")
 print(f"wrote {dst}")

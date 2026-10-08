@@ -18,8 +18,12 @@ function EnvVal($k) {
     return (($line -replace "^[^=]*=", "") -replace "\s+#.*$", "").Trim().Trim('"').Trim("'")
 }
 $fake = $false
-foreach ($k in "GROQ_API_KEY", "PORTKEY_API_KEY", "GEMINI_API_KEY") { if (-not (EnvVal $k)) { $fake = $true } }
-if ($fake) { $env:APP_ENV = "loadtest"; $mode = "FAKE models (APP_ENV=loadtest; no API keys in .env)" } else { $env:APP_ENV = "dev"; $mode = "REAL models (keys found in .env)" }
+foreach ($k in "GROQ_API_KEY", "GEMINI_API_KEY") { if (-not (EnvVal $k)) { $fake = $true } }
+if ($fake) { $env:APP_ENV = "loadtest"; $mode = "FAKE models (APP_ENV=loadtest; GROQ/GEMINI keys missing in .env)" }
+else {
+    $env:APP_ENV = "dev"
+    if (EnvVal "PORTKEY_API_KEY") { $env:USE_GATEWAY = "true"; $mode = "REAL models (keys found in .env), Portkey gateway" } else { $env:USE_GATEWAY = "false"; $mode = "REAL models (keys found in .env), direct Groq (no PORTKEY_API_KEY)" }
+}
 Set-Content $report "# Docker verification report`n`n- mode: $mode`n- date: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))`n"
 
 docker compose down -v *> $null

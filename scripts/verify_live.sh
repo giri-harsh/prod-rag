@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Verify the system against REAL Groq / Portkey / Gemini.  Usage: bash scripts/verify_live.sh
-# Needs .env with GROQ_API_KEY, PORTKEY_API_KEY, GEMINI_API_KEY (values are never printed). Idempotent; exits non-zero with one line on failure.
+# Needs .env with GROQ_API_KEY and GEMINI_API_KEY (values are never printed). A non-empty PORTKEY_API_KEY switches the run to gateway mode
+# (USE_GATEWAY=true + the Portkey fallback test); otherwise Groq is called directly (USE_GATEWAY=false, fallback test SKIPPED-NO-PORTKEY).
+# Idempotent; exits non-zero with one line on failure.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 fail() { echo "verify_live FAILED: $1" >&2; exit 1; }
@@ -9,9 +11,11 @@ fail() { echo "verify_live FAILED: $1" >&2; exit 1; }
 env_val() {  # value of KEY from .env (never echoed by callers)
   grep -E "^[[:space:]]*$1[[:space:]]*=" .env | tail -1 | sed -E "s/^[^=]*=//; s/[[:space:]]+#.*$//; s/^[[:space:]\"']+//; s/[[:space:]\"']+$//"
 }
-for k in GROQ_API_KEY PORTKEY_API_KEY GEMINI_API_KEY; do
-  [ -n "$(env_val $k)" ] || fail "$k is empty in .env"
+for k in GROQ_API_KEY GEMINI_API_KEY; do
+  [ -n "${!k:-}$(env_val $k)" ] || fail "$k is empty in .env"
 done
+if [ -n "${PORTKEY_API_KEY:-}$(env_val PORTKEY_API_KEY)" ]; then export USE_GATEWAY=true; MODE=gateway; else export USE_GATEWAY=false; MODE=direct-groq; fi
+echo "mode: $MODE (USE_GATEWAY=$USE_GATEWAY)"
 
 if [ -x .venv/bin/python ]; then PY=.venv/bin/python; elif [ -x .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe; else PY=${PYTHON:-python}; fi
 "$PY" -c "import app.config" 2>/dev/null || fail "cannot import the app with $PY (create the venv: uv venv --python 3.11 .venv && uv pip install -r requirements-dev.lock)"
