@@ -1,0 +1,39 @@
+# Prometheus config for the Kubernetes deployment in deploy/k8s/base (pod discovery, no Prometheus Operator needed).
+# Validate:  promtool check config deploy/observability/prometheus/prometheus.yml
+#
+# * rag-api    - the API pods expose the metrics port 9100 (container port NAME "metrics" in api.yaml). This is the internal
+#                port, never the Service port; /metrics does not exist on 8080.
+# * rag-worker - the arq worker serves its own metrics on WORKER_METRICS_PORT (default 9101, app/worker.py). worker.yaml
+#                does not declare that port yet, so the address is rewritten from the pod IP instead of using a port name.
+# The alert rules assume exactly these two job names.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+# alerting:                      # point at your Alertmanager; route on the `severity` label (critical = page, warning = ticket)
+#   alertmanagers:
+#     - static_configs: [{targets: ["alertmanager:9093"]}]
+
+scrape_configs:
+  - job_name: rag-api
+    metrics_path: /metrics
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - {source_labels: [__meta_kubernetes_pod_label_app], regex: rag-api, action: keep}
+      - {source_labels: [__meta_kubernetes_pod_container_port_name], regex: metrics, action: keep}
+      - {source_labels: [__meta_kubernetes_namespace], target_label: namespace}
+      - {source_labels: [__meta_kubernetes_pod_name], target_label: pod}
+
+  - job_name: rag-worker
+    metrics_path: /metrics
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - {source_labels: [__meta_kubernetes_pod_label_app], regex: rag-worker, action: keep}
+      - {source_labels: [__meta_kubernetes_pod_ip], regex: (.+), replacement: "$1:9101", target_label: __address__}
+      - {source_labels: [__meta_kubernetes_namespace], target_label: namespace}
+      - {source_labels: [__meta_kubernetes_pod_name], target_label: pod}

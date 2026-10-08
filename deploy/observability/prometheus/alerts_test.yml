@@ -1,0 +1,516 @@
+# Unit tests for alerts.yml.   Run:  promtool test rules deploy/observability/prometheus/alerts_test.yml
+# Synthetic series use the label sets the app really exports (checked against a live /metrics scrape, see
+# DOCS/14_SLOS_AND_RUNBOOKS.md "Validation"). Sample interval 1 m; `a+bxN` = start a, add b, N times.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ---------------------------------------------------------------- 5xx ratio: fast burn (multi-window)
+  - name: fast burn fires only when BOTH the 5 m and 1 h windows exceed 7.2 %
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+100x200'
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="5xx"}'
+        values: '0x60 10+10x140'   # healthy for an hour, then 10 errors per 100 ok responses
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: RagHighErrorRateFastBurn
+        exp_alerts: []
+      - eval_time: 100m          # 5 m window is at 9.1 % but the 1 h window is still ~6 %: no page for a short blip
+        alertname: RagHighErrorRateFastBurn
+        exp_alerts: []
+      - eval_time: 130m
+        alertname: RagHighErrorRateFastBurn
+        exp_alerts:
+          - exp_labels: {severity: critical, component: api}
+            exp_annotations:
+              summary: "RAG API is burning its availability error budget fast"
+              description: "9.091% of requests answered 5xx over the last 5 minutes (budget is 0.5 %; fast-burn threshold 7.2 %)."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raghigherrorratefastburn"
+
+  - name: slow burn fires after hours at 4 % errors, fast burn stays quiet
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+96x480'
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="5xx"}'
+        values: '0+4x480'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: RagHighErrorRateSlowBurn
+        exp_alerts:
+          - exp_labels: {severity: warning, component: api}
+            exp_annotations:
+              summary: "RAG API 5xx ratio is steadily above the error budget"
+              description: "4% of requests answered 5xx over the last 30 minutes (slow-burn threshold 3 %)."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raghigherrorrateslowburn"
+      - eval_time: 7h
+        alertname: RagHighErrorRateFastBurn
+        exp_alerts: []           # 4 % is below the 7.2 % page threshold
+
+  - name: slow burn ignores a one-hour 4 % blip inside a healthy 6 h window
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+100x480'
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="5xx"}'
+        values: '0x300 4+4x180'   # errors only during the last hour before t=6h
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: RagHighErrorRateSlowBurn
+        exp_alerts: []           # 30 m window ~4 % but the 6 h window is below 3 %
+
+  - name: error ratio is ignored at trivial traffic (guard 0.1 req/s)
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="5xx"}'
+        values: '0+3x200'        # 100 % errors but only 0.05 req/s
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: RagHighErrorRateFastBurn
+        exp_alerts: []
+
+  # ---------------------------------------------------------------- latency
+  - name: p95 between 5 s and 10 s warns but does not page
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+100x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="5.0"}'
+        values: '0+90x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="10.0"}'
+        values: '0+98x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="30.0"}'
+        values: '0+100x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="+Inf"}'
+        values: '0+100x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RagLatencyP95High
+        exp_alerts:
+          - exp_labels: {severity: warning, component: api}
+            exp_annotations:
+              summary: "RAG API p95 latency is above 5 s"
+              description: "p95 request latency is 8.125s over the last 5 minutes (target: 95 % of requests under 5 s)."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raglatencyp95high"
+      - eval_time: 20m
+        alertname: RagLatencyP95Critical
+        exp_alerts: []
+
+  - name: p95 above 10 s pages
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+100x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="5.0"}'
+        values: '0+80x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="10.0"}'
+        values: '0+92x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="30.0"}'
+        values: '0+100x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="+Inf"}'
+        values: '0+100x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RagLatencyP95Critical
+        exp_alerts:
+          - exp_labels: {severity: critical, component: api}
+            exp_annotations:
+              summary: "RAG API p95 latency is above 10 s"
+              description: "p95 request latency is 17.5s over the last 5 minutes; clients with a 30 s timeout are close to failing."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raglatencyp95critical"
+
+  - name: healthy latency stays quiet
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+100x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="5.0"}'
+        values: '0+99x60'
+      - series: 'http_request_duration_highr_seconds_bucket{job="rag-api",instance="a",le="+Inf"}'
+        values: '0+100x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: RagLatencyP95High
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: RagLatencyP95Critical
+        exp_alerts: []
+
+  # ---------------------------------------------------------------- 429s
+  - name: per-key rate limiting above 10 % of traffic
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="4xx"}'
+        values: '0+100x60'
+      - series: 'rag_rate_limited_total{job="rag-api",instance="a",window="minute"}'
+        values: '0+20x60'
+      - series: 'rag_rate_limited_total{job="rag-api",instance="a",window="fallback"}'
+        values: '0+90x60'      # fallback rejections must NOT count towards this alert
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: RagRateLimited429High
+        exp_alerts:
+          - exp_labels: {severity: warning, component: api}
+            exp_annotations:
+              summary: "More than 10 % of RAG API requests are rejected by per-key rate limits"
+              description: "20% of requests got 429 from the minute/day limiter over the last 10 minutes."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragratelimited429high"
+
+  - name: light rate limiting stays quiet
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+100x60'
+      - series: 'rag_rate_limited_total{job="rag-api",instance="a",window="minute"}'
+        values: '0+5x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: RagRateLimited429High
+        exp_alerts: []
+
+  - name: auth-failure 429s
+    interval: 1m
+    input_series:
+      - series: 'rag_rate_limited_total{job="rag-api",instance="a",window="auth_fail"}'
+        values: '0+30x40'       # 0.5 / s
+      - series: 'rag_rate_limited_total{job="rag-api",instance="b",window="auth_fail"}'
+        values: '0+3x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RagAuthFailure429
+        exp_alerts:
+          - exp_labels: {severity: warning, component: api}
+            exp_annotations:
+              summary: "Clients are being throttled for repeated authentication failures"
+              description: "0.55 auth-failure 429/s (per-IP penalty box, AUTH_FAIL_PER_MIN). Credential stuffing, a revoked key still in use, or TRUSTED_PROXIES misconfigured."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragauthfailure429"
+
+  - name: occasional auth failures stay quiet
+    interval: 1m
+    input_series:
+      - series: 'rag_rate_limited_total{job="rag-api",instance="a",window="auth_fail"}'
+        values: '0+6x40'        # 0.1 / s
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RagAuthFailure429
+        exp_alerts: []
+
+  - name: limiter fallback rejecting requests
+    interval: 1m
+    input_series:
+      - series: 'rag_limiter_fallback_total{job="rag-api",instance="a"}'
+        values: '0+5x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RagLimiterFallbackActive
+        exp_alerts:
+          - exp_labels: {severity: warning, component: redis}
+            exp_annotations:
+              summary: "Rate limiting is running on the in-process fallback (Redis unavailable)"
+              description: "Redis is failing the readiness check or the fallback limiter is rejecting requests; per-key limits are only approximate (limit / WEB_CONCURRENCY per worker)."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raglimiterfallbackactive"
+
+  - name: limiter fallback silently serving traffic is caught by the redis readiness check
+    interval: 1m
+    input_series:
+      - series: 'rag_limiter_fallback_total{job="rag-api",instance="a"}'
+        values: '0x30'          # the fallback never rejected anybody
+      - series: 'rag_ready_check{job="rag-api",instance="a",check="redis"}'
+        values: '1x5 0x25'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RagLimiterFallbackActive
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: RagLimiterFallbackActive
+        exp_alerts:
+          - exp_labels: {severity: warning, component: redis}
+            exp_annotations:
+              summary: "Rate limiting is running on the in-process fallback (Redis unavailable)"
+              description: "Redis is failing the readiness check or the fallback limiter is rejecting requests; per-key limits are only approximate (limit / WEB_CONCURRENCY per worker)."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raglimiterfallbackactive"
+
+  - name: healthy limiter stays quiet
+    interval: 1m
+    input_series:
+      - series: 'rag_limiter_fallback_total{job="rag-api",instance="a"}'
+        values: '0x30'
+      - series: 'rag_ready_check{job="rag-api",instance="a",check="redis"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RagLimiterFallbackActive
+        exp_alerts: []
+
+  # ---------------------------------------------------------------- circuit breakers
+  - name: one pod with an open llm breaker warns but does not page
+    interval: 1m
+    input_series:
+      - series: 'rag_circuit_breaker_open{job="rag-api",instance="p1",upstream="llm"}'
+        values: '0x5 2x25'      # two of this pod's workers have it open
+      - series: 'rag_circuit_breaker_open{job="rag-api",instance="p2",upstream="llm"}'
+        values: '0x30'
+      - series: 'rag_circuit_breaker_open{job="rag-api",instance="p3",upstream="llm"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RagCircuitBreakerOpen
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RagCircuitBreakerOpen
+        exp_alerts:
+          - exp_labels: {severity: warning, component: resilience, upstream: llm}
+            exp_annotations:
+              summary: "Circuit breaker for llm is open on 2 worker(s)"
+              description: "Calls to llm fail fast on 2 worker process(es) after BREAKER_FAILURES consecutive failed calls; clients see 503 for that dependency."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragcircuitbreakeropen"
+      - eval_time: 15m
+        alertname: RagCircuitBreakerOpenFleet
+        exp_alerts: []          # 1 of 3 pods
+
+  - name: breaker open on most pods pages
+    interval: 1m
+    input_series:
+      - series: 'rag_circuit_breaker_open{job="rag-api",instance="p1",upstream="qdrant"}'
+        values: '1x30'
+      - series: 'rag_circuit_breaker_open{job="rag-api",instance="p2",upstream="qdrant"}'
+        values: '1x30'
+      - series: 'rag_circuit_breaker_open{job="rag-api",instance="p3",upstream="qdrant"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RagCircuitBreakerOpenFleet
+        exp_alerts:
+          - exp_labels: {severity: critical, component: resilience, upstream: qdrant}
+            exp_annotations:
+              summary: "Circuit breaker for qdrant is open on at least half of the API pods"
+              description: "66.67% of API pods have an open breaker for qdrant: the upstream is effectively down for users."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragcircuitbreakeropenfleet"
+
+  - name: closed breakers stay quiet
+    interval: 1m
+    input_series:
+      - series: 'rag_circuit_breaker_open{job="rag-api",instance="p1",upstream="llm"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RagCircuitBreakerOpen
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: RagCircuitBreakerOpenFleet
+        exp_alerts: []
+
+  # ---------------------------------------------------------------- upstream failure rate
+  - name: upstream errors above 5 % of /query fire per exception class, caller-side 409s do not
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="5xx"}'
+        values: '0+100x30'
+      - series: 'rag_upstream_errors_total{job="rag-api",instance="a",upstream="RetrievalUnavailable"}'
+        values: '0+10x30'
+      - series: 'rag_upstream_errors_total{job="rag-api",instance="a",upstream="SessionBusy"}'
+        values: '0+50x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: RagUpstreamFailureRate
+        exp_alerts:
+          - exp_labels: {severity: warning, component: api, upstream: RetrievalUnavailable}
+            exp_annotations:
+              summary: "RetrievalUnavailable errors affect more than 5 % of /query requests"
+              description: "10% of /query requests ended in RetrievalUnavailable (503) over the last 5 minutes."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragupstreamfailurerate"
+
+  - name: a few upstream errors stay quiet
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="rag-api",instance="a",handler="/query",method="POST",status="2xx"}'
+        values: '0+100x30'
+      - series: 'rag_upstream_errors_total{job="rag-api",instance="a",upstream="UpstreamUnavailable"}'
+        values: '0+2x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: RagUpstreamFailureRate
+        exp_alerts: []
+
+  # ---------------------------------------------------------------- guardrails
+  - name: guardrail spike (30 blocks/min after hours at 1/min) fires
+    interval: 1m
+    input_series:
+      - series: 'rag_guardrail_blocks_total{job="rag-api",instance="a",stage="input",rail="self check input"}'
+        values: '0+1x360 360+30x40'
+    alert_rule_test:
+      - eval_time: 300m
+        alertname: RagGuardrailBlockSpike
+        exp_alerts: []
+      - eval_time: 400m
+        alertname: RagGuardrailBlockSpike
+        exp_alerts:
+          - exp_labels: {severity: warning, component: guardrails}
+            exp_annotations:
+              summary: "Guardrail blocks spiked to at least 3x the 6 h average"
+              description: "0.50 blocks/s over the last 10 minutes. Break down by stage/rail on the dashboard to tell an attack from a false-block regression."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragguardrailblockspike"
+
+  - name: constant guardrail block rate is not a spike
+    interval: 1m
+    input_series:
+      - series: 'rag_guardrail_blocks_total{job="rag-api",instance="a",stage="input",rail="self check input"}'
+        values: '0+30x400'
+    alert_rule_test:
+      - eval_time: 390m
+        alertname: RagGuardrailBlockSpike
+        exp_alerts: []
+
+  # ---------------------------------------------------------------- ingestion
+  - name: queue depth above 20 for 15 minutes
+    interval: 1m
+    input_series:
+      - series: 'rag_ingest_queue_depth{job="rag-worker",instance="w1"}'
+        values: '3x5 30x40'
+      - series: 'rag_ingest_queue_depth{job="rag-worker",instance="w2"}'
+        values: '3x45'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: RagIngestQueueBacklog
+        exp_alerts: []          # above 20 for only 7 minutes
+      - eval_time: 30m
+        alertname: RagIngestQueueBacklog
+        exp_alerts:
+          - exp_labels: {severity: warning, component: worker}
+            exp_annotations:
+              summary: "More than 20 ingestion jobs have been waiting for 15 minutes"
+              description: "30 jobs in the arq queue (ZCARD arq:queue). Workers are saturated, wedged, or a rebuild holds the slots."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragingestqueuebacklog"
+
+  - name: short queue spike stays quiet
+    interval: 1m
+    input_series:
+      - series: 'rag_ingest_queue_depth{job="rag-worker",instance="w1"}'
+        values: '30x10 2x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: RagIngestQueueBacklog
+        exp_alerts: []
+
+  - name: stale worker heartbeat
+    interval: 1m
+    input_series:
+      - series: 'rag_worker_heartbeat_timestamp_seconds{job="rag-worker",instance="w1"}'
+        values: '0+60x10 600x30'   # value = unix time while healthy (sample time = value), then frozen at t=600 s
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: RagIngestWorkerStalled
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: RagIngestWorkerStalled
+        exp_alerts:
+          - exp_labels: {severity: warning, component: worker}
+            exp_annotations:
+              summary: "No ingestion worker heartbeat"
+              description: "No rag-worker replica has refreshed its queue-depth heartbeat for over 3 minutes (or none is scraped). Queued ingestion jobs are not being picked up."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragingestworkerstalled"
+
+  - name: no worker target at all
+    interval: 1m
+    input_series:
+      - series: 'up{job="rag-api",instance="a"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RagIngestWorkerStalled
+        exp_alerts:
+          - exp_labels: {severity: warning, component: worker, job: rag-worker}
+            exp_annotations:
+              summary: "No ingestion worker heartbeat"
+              description: "No rag-worker replica has refreshed its queue-depth heartbeat for over 3 minutes (or none is scraped). Queued ingestion jobs are not being picked up."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragingestworkerstalled"
+
+  - name: healthy worker heartbeat stays quiet
+    interval: 1m
+    input_series:
+      - series: 'rag_worker_heartbeat_timestamp_seconds{job="rag-worker",instance="w1"}'
+        values: '0+60x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: RagIngestWorkerStalled
+        exp_alerts: []
+
+  # ---------------------------------------------------------------- readiness / scrape health
+  - name: one pod failing readiness warns, the fleet alert stays quiet
+    interval: 1m
+    input_series:
+      - series: 'rag_ready{job="rag-api",instance="p1"}'
+        values: '1x10 0x30'
+      - series: 'rag_ready{job="rag-api",instance="p2"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: RagReadinessFailing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: RagReadinessFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, component: api, instance: p1, job: rag-api}
+            exp_annotations:
+              summary: "RAG API pod p1 fails /readyz"
+              description: "The last /readyz probe on p1 failed for 5 minutes. rag_ready_check{check=...} == 0 names the dependency."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragreadinessfailing"
+      - eval_time: 20m
+        alertname: RagNotReadyFleet
+        exp_alerts: []
+
+  - name: all pods failing readiness pages
+    interval: 1m
+    input_series:
+      - series: 'rag_ready{job="rag-api",instance="p1"}'
+        values: '1x10 0x30'
+      - series: 'rag_ready{job="rag-api",instance="p2"}'
+        values: '1x10 0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RagNotReadyFleet
+        exp_alerts:
+          - exp_labels: {severity: critical, component: api}
+            exp_annotations:
+              summary: "No RAG API pod is ready"
+              description: "Every pod reports /readyz failing; the Service has no ready endpoints. Check rag_ready_check{check=...} for the failing dependency."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragnotreadyfleet"
+
+  - name: scrape target down and missing
+    interval: 1m
+    input_series:
+      - series: 'up{job="rag-api",instance="a:9100"}'
+        values: '1x5 0x25'
+      - series: 'up{job="rag-api",instance="b:9100"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RagApiTargetDown
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RagApiTargetDown
+        exp_alerts:
+          - exp_labels: {severity: critical, component: api, job: rag-api, instance: "a:9100"}
+            exp_annotations:
+              summary: "Prometheus cannot scrape the RAG API metrics port"
+              description: "job=rag-api target a:9100 is down or missing, so every other alert for it is blind."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragapitargetdown"
+
+  - name: no rag-api target at all
+    interval: 1m
+    input_series:
+      - series: 'up{job="something-else",instance="x"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RagApiTargetDown
+        exp_alerts:
+          - exp_labels: {severity: critical, component: api, job: rag-api}
+            exp_annotations:
+              summary: "Prometheus cannot scrape the RAG API metrics port"
+              description: "job=rag-api target  is down or missing, so every other alert for it is blind."
+              runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragapitargetdown"

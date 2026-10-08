@@ -19,7 +19,7 @@ from app.auth.keys import Principal
 from app.config import Settings, load_settings
 from app.container import Services, build_services
 from app.errors import AppError, EmbeddingConfigMismatch
-from app.observability.metrics import UPSTREAM_ERRORS
+from app.observability.metrics import READY, READY_CHECK, UPSTREAM_ERRORS
 from app.observability.redact import install_logging_filter, langsmith_client, logfire_scrubbing
 from app.ratelimit import Limited
 
@@ -258,6 +258,9 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         await probe("embedding_config", svc.vectors.verify_config())
         checks["guardrails"] = "ok" if svc.guard.ready else "fail: not initialised"
         ok = all(v == "ok" for v in checks.values())
+        READY.set(1 if ok else 0)  # exported so alerts see readiness without an admin key
+        for name, v in checks.items():
+            READY_CHECK.labels(name).set(1 if v == "ok" else 0)
         body: dict = {"ready": ok}
         raw = request.headers.get("x-api-key")
         if raw:

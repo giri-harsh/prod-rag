@@ -11,6 +11,7 @@ import logfire
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_random_exponential
 
 from app.errors import CircuitOpen
+from app.observability.metrics import CIRCUIT_OPEN, CIRCUIT_TRIPS
 
 T = TypeVar("T")
 
@@ -23,6 +24,8 @@ class CircuitBreaker:
         self._fails = 0
         self._opened_at: float | None = None
         self._probing = False
+        self._g_open, self._c_trips = CIRCUIT_OPEN.labels(name), CIRCUIT_TRIPS.labels(name)
+        self._g_open.set(0)  # export the series from the start so dashboards show "closed" instead of "no data"
 
     @property
     def state(self) -> str:
@@ -42,13 +45,20 @@ class CircuitBreaker:
         self._probing = False
 
     def record_success(self) -> None:
+        was_tripped = self._opened_at is not None
         self._fails, self._opened_at, self._probing = 0, None, False
+        if was_tripped:
+            self._g_open.set(0)
 
     def record_failure(self) -> None:
+        probe, was_tripped = self._probing, self._opened_at is not None
         self._probing = False
         self._fails += 1
-        if self._fails >= self.threshold or self._opened_at is not None:
+        if self._fails >= self.threshold or was_tripped:
             self._opened_at = self._clock()
+            if probe or not was_tripped:  # a real trip, not an in-flight call that failed after the breaker had already opened
+                self._c_trips.inc()
+            self._g_open.set(1)
             logfire.warn("circuit opened", upstream=self.name)
 
 

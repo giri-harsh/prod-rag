@@ -1,0 +1,266 @@
+# Prometheus alert rules for the multi-tenant RAG API.
+#
+# Scrape contract (see prometheus.yml): job="rag-api" -> gunicorn metrics port (METRICS_PORT, 9100),
+#                                       job="rag-worker" -> arq worker (WORKER_METRICS_PORT, 9101).
+# Every metric below is exported by the app; `python scripts/check_metric_names.py` fails if a name or label is unknown.
+# Thresholds are TARGETS derived from DOCS/14_SLOS_AND_RUNBOOKS.md, not measured production baselines - tune them after
+# a few weeks of real traffic.
+#
+# HTTP metrics come from prometheus-fastapi-instrumentator: status is GROUPED ("2xx", "4xx", "5xx"), so a 429 cannot be
+# told apart from other 4xx with http_requests_total; use rag_rate_limited_total for that. The per-handler latency
+# histogram only has 0.1/0.5/1 s buckets, so latency rules use the unlabelled http_request_duration_highr_seconds
+# (all handlers; /healthz and /readyz are excluded by the app).
+groups:
+  # ------------------------------------------------------------------ availability (SLO-A, 99.5 % / 30 d => budget 0.005)
+  - name: rag-availability
+    rules:
+      - alert: RagHighErrorRateFastBurn
+        # burn rate 14.4 = 14.4 x 0.005 = 7.2 % of requests answered 5xx over BOTH 1 h and 5 min (2 % of the monthly budget per hour)
+        # (the value of an `and` is its LEFT operand, so the short window goes first and is what {{ $value }} shows)
+        expr: |
+          (
+            sum(rate(http_requests_total{job="rag-api",status="5xx"}[5m]))
+              / sum(rate(http_requests_total{job="rag-api"}[5m])) > (14.4 * 0.005)
+          )
+          and
+          (
+            sum(rate(http_requests_total{job="rag-api",status="5xx"}[1h]))
+              / sum(rate(http_requests_total{job="rag-api"}[1h])) > (14.4 * 0.005)
+          )
+          and
+          sum(rate(http_requests_total{job="rag-api"}[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "RAG API is burning its availability error budget fast"
+          description: "{{ $value | humanizePercentage }} of requests answered 5xx over the last 5 minutes (budget is 0.5 %; fast-burn threshold 7.2 %)."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raghigherrorratefastburn"
+
+      - alert: RagHighErrorRateSlowBurn
+        # burn rate 6 = 3 % of requests answered 5xx over BOTH 6 h and 30 min (5 % of the monthly budget per 6 h)
+        expr: |
+          (
+            sum(rate(http_requests_total{job="rag-api",status="5xx"}[30m]))
+              / sum(rate(http_requests_total{job="rag-api"}[30m])) > (6 * 0.005)
+          )
+          and
+          (
+            sum(rate(http_requests_total{job="rag-api",status="5xx"}[6h]))
+              / sum(rate(http_requests_total{job="rag-api"}[6h])) > (6 * 0.005)
+          )
+          and
+          sum(rate(http_requests_total{job="rag-api"}[30m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "RAG API 5xx ratio is steadily above the error budget"
+          description: "{{ $value | humanizePercentage }} of requests answered 5xx over the last 30 minutes (slow-burn threshold 3 %)."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raghigherrorrateslowburn"
+
+      - alert: RagReadinessFailing
+        expr: rag_ready{job="rag-api"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "RAG API pod {{ $labels.instance }} fails /readyz"
+          description: "The last /readyz probe on {{ $labels.instance }} failed for 5 minutes. rag_ready_check{check=...} == 0 names the dependency."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragreadinessfailing"
+
+      - alert: RagNotReadyFleet
+        expr: max(rag_ready{job="rag-api"}) == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "No RAG API pod is ready"
+          description: "Every pod reports /readyz failing; the Service has no ready endpoints. Check rag_ready_check{check=...} for the failing dependency."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragnotreadyfleet"
+
+      - alert: RagApiTargetDown
+        expr: (up{job="rag-api"} == 0) or absent(up{job="rag-api"})
+        for: 3m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "Prometheus cannot scrape the RAG API metrics port"
+          description: "job=rag-api target {{ $labels.instance }} is down or missing, so every other alert for it is blind."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragapitargetdown"
+
+  # ------------------------------------------------------------------ latency (SLO-L1: 95 % of requests < 5 s)
+  - name: rag-latency
+    rules:
+      - alert: RagLatencyP95High
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_highr_seconds_bucket{job="rag-api"}[5m]))) > 5
+          and
+          sum(rate(http_requests_total{job="rag-api"}[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "RAG API p95 latency is above 5 s"
+          description: "p95 request latency is {{ $value | humanizeDuration }} over the last 5 minutes (target: 95 % of requests under 5 s)."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raglatencyp95high"
+
+      - alert: RagLatencyP95Critical
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_highr_seconds_bucket{job="rag-api"}[5m]))) > 10
+          and
+          sum(rate(http_requests_total{job="rag-api"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "RAG API p95 latency is above 10 s"
+          description: "p95 request latency is {{ $value | humanizeDuration }} over the last 5 minutes; clients with a 30 s timeout are close to failing."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raglatencyp95critical"
+
+  # ------------------------------------------------------------------ protection: rate limits, auth failures, limiter fallback
+  - name: rag-rate-limiting
+    rules:
+      - alert: RagRateLimited429High
+        # per-key minute/day windows only; the Redis-down fallback has its own alert
+        expr: |
+          sum(rate(rag_rate_limited_total{job="rag-api",window=~"minute|day"}[10m]))
+            / sum(rate(http_requests_total{job="rag-api"}[10m])) > 0.10
+          and
+          sum(rate(http_requests_total{job="rag-api"}[10m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "More than 10 % of RAG API requests are rejected by per-key rate limits"
+          description: "{{ $value | humanizePercentage }} of requests got 429 from the minute/day limiter over the last 10 minutes."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragratelimited429high"
+
+      - alert: RagAuthFailure429
+        # NOTE: rag_rate_limited_total{window="auth_fail"} currently undercounts (see runbook); any sustained non-zero rate is real
+        expr: sum(rate(rag_rate_limited_total{job="rag-api",window="auth_fail"}[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "Clients are being throttled for repeated authentication failures"
+          description: '{{ $value | printf "%.2f" }} auth-failure 429/s (per-IP penalty box, AUTH_FAIL_PER_MIN). Credential stuffing, a revoked key still in use, or TRUSTED_PROXIES misconfigured.'
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragauthfailure429"
+
+      - alert: RagLimiterFallbackActive
+        # rag_limiter_fallback_total only moves when the fallback REJECTS a request; serving traffic under the fallback is
+        # visible through the Redis readiness check, hence the second condition
+        expr: |
+          sum(rate(rag_limiter_fallback_total{job="rag-api"}[5m])) > 0
+          or
+          min(rag_ready_check{job="rag-api",check="redis"}) == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Rate limiting is running on the in-process fallback (Redis unavailable)"
+          description: "Redis is failing the readiness check or the fallback limiter is rejecting requests; per-key limits are only approximate (limit / WEB_CONCURRENCY per worker)."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#raglimiterfallbackactive"
+
+  # ------------------------------------------------------------------ upstream dependencies
+  - name: rag-dependencies
+    rules:
+      - alert: RagCircuitBreakerOpen
+        expr: sum by (upstream) (rag_circuit_breaker_open) > 0
+        for: 2m
+        labels:
+          severity: warning
+          component: resilience
+        annotations:
+          summary: "Circuit breaker for {{ $labels.upstream }} is open on {{ $value }} worker(s)"
+          description: "Calls to {{ $labels.upstream }} fail fast on {{ $value }} worker process(es) after BREAKER_FAILURES consecutive failed calls; clients see 503 for that dependency."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragcircuitbreakeropen"
+
+      - alert: RagCircuitBreakerOpenFleet
+        # breakers are per worker process; >= 50 % of API pods with an open breaker means the upstream itself is down
+        expr: |
+          count by (upstream) (rag_circuit_breaker_open{job="rag-api"} > 0)
+            / count by (upstream) (rag_circuit_breaker_open{job="rag-api"}) >= 0.5
+        for: 2m
+        labels:
+          severity: critical
+          component: resilience
+        annotations:
+          summary: "Circuit breaker for {{ $labels.upstream }} is open on at least half of the API pods"
+          description: "{{ $value | humanizePercentage }} of API pods have an open breaker for {{ $labels.upstream }}: the upstream is effectively down for users."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragcircuitbreakeropenfleet"
+
+      - alert: RagUpstreamFailureRate
+        # rag_upstream_errors_total counts every AppError by exception class (label is named "upstream" but holds the class);
+        # SessionBusy (409) and RebuildInProgress (409) are caller/ops conditions, not upstream failures, so they are excluded
+        expr: |
+          sum by (upstream) (rate(rag_upstream_errors_total{job="rag-api",upstream=~"UpstreamUnavailable|CircuitOpen|RetrievalUnavailable|GuardrailUnavailable"}[5m]))
+            / scalar(sum(rate(http_requests_total{job="rag-api",handler="/query"}[5m]))) > 0.05
+          and on()
+          sum(rate(http_requests_total{job="rag-api",handler="/query"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "{{ $labels.upstream }} errors affect more than 5 % of /query requests"
+          description: "{{ $value | humanizePercentage }} of /query requests ended in {{ $labels.upstream }} (503) over the last 5 minutes."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragupstreamfailurerate"
+
+  # ------------------------------------------------------------------ guardrails (correctness proxy, SLO-C1)
+  - name: rag-guardrails
+    rules:
+      - alert: RagGuardrailBlockSpike
+        # 10 min block rate is >= 3x the trailing 6 h average and above 0.1/s: new attack wave, prompt/rail regression or a bad model rollout
+        expr: |
+          sum(rate(rag_guardrail_blocks_total{job="rag-api"}[10m])) > 0.1
+          and
+          sum(rate(rag_guardrail_blocks_total{job="rag-api"}[10m])) > 3 * sum(rate(rag_guardrail_blocks_total{job="rag-api"}[6h]))
+        for: 10m
+        labels:
+          severity: warning
+          component: guardrails
+        annotations:
+          summary: "Guardrail blocks spiked to at least 3x the 6 h average"
+          description: '{{ $value | printf "%.2f" }} blocks/s over the last 10 minutes. Break down by stage/rail on the dashboard to tell an attack from a false-block regression.'
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragguardrailblockspike"
+
+  # ------------------------------------------------------------------ ingestion worker (arq)
+  - name: rag-ingestion
+    rules:
+      - alert: RagIngestQueueBacklog
+        expr: max(rag_ingest_queue_depth{job="rag-worker"}) > 20
+        for: 15m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "More than 20 ingestion jobs have been waiting for 15 minutes"
+          description: "{{ $value }} jobs in the arq queue (ZCARD arq:queue). Workers are saturated, wedged, or a rebuild holds the slots."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragingestqueuebacklog"
+
+      - alert: RagIngestWorkerStalled
+        # the heartbeat is stamped every 15 s by each worker replica after a successful ZCARD; it stops advancing if the
+        # worker is dead, blocked or cannot reach Redis. absent() covers "no worker target at all".
+        expr: |
+          (time() - max(rag_worker_heartbeat_timestamp_seconds{job="rag-worker"}) > 180)
+          or
+          absent(rag_worker_heartbeat_timestamp_seconds{job="rag-worker"})
+        for: 5m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "No ingestion worker heartbeat"
+          description: "No rag-worker replica has refreshed its queue-depth heartbeat for over 3 minutes (or none is scraped). Queued ingestion jobs are not being picked up."
+          runbook_url: "DOCS/14_SLOS_AND_RUNBOOKS.md#ragingestworkerstalled"
