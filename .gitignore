@@ -62,3 +62,7 @@ __pycache__/
 .env
 .pytest_cache/
 .ruff_cache/
+
+# assistant tooling (keep local, never commit)
+.claude/
+CLAUDE.md
