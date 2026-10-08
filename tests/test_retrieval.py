@@ -328,3 +328,11 @@ async def test_real_flashrank_scores_separate_relevant_from_irrelevant(tmp_path)
     assert all(score < 0.05 for _, score in ranked[1:])  # below RERANK_MIN_SCORE => would not satisfy the grade
     off = await rr.rerank("what is the capital of France", docs, 3)
     assert off[0][1] < 0.05  # an off-topic query never passes grading, so the loop ends with the fixed answer
+
+
+def test_numbered_list_items_do_not_hijack_heading_paths_in_markdown_docs():
+    doc = "# Guide\n\n## Troubleshooting\n\nSome text.\n\n3. Failed Jobs\n\nlist item text\n\n## Security\n\nmore text"
+    paths = {c.heading_path for c in split_pages([(None, doc)], 900, 0.15, 1)}
+    assert all(p.startswith("Guide") for p in paths) and not any("Failed Jobs" in p for p in paths)
+    pdf_like = "1.2 Scheduling\n\nbody text here\n\n1.3 Networking\n\nmore body"  # no markdown headings: numbered headings still work
+    assert any(c.heading_path.startswith("1.") for c in split_pages([(1, pdf_like)], 900, 0.15, 1))

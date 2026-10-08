@@ -27,14 +27,15 @@ def est_tokens(text: str) -> int:
     return max(1, len(text) // CHARS_PER_TOKEN)
 
 
-def _heading(block: str) -> tuple[int, str] | None:
-    """Return (level, title) if the whole block is a single heading line."""
+def _heading(block: str, numbered: bool = True) -> tuple[int, str] | None:
+    """Return (level, title) if the whole block is a single heading line. `numbered` enables the "1.2 Title" heuristic
+    (used only for documents with no markdown headings, e.g. PDFs; otherwise "3. Failed Jobs" list items would become headings)."""
     if "\n" in block.strip() or len(block) > 120:
         return None
     line = block.strip()
     if m := _MD_HEADING.match(line):
         return len(m.group(1)), m.group(2)
-    if m := _NUM_HEADING.match(line):
+    if numbered and (m := _NUM_HEADING.match(line)):
         return m.group(1).count(".") + 1, line
     return None
 
@@ -92,6 +93,7 @@ def split_pages(
     overlap_ratio: float = 0.15,
     min_tokens: int = 200,
 ) -> list[Chunk]:
+    has_md = any(re.search(r"(?m)^#{1,6}\s+\S", t) for _, t in pages)
     max_chars = target_tokens * CHARS_PER_TOKEN
     overlap_chars = int(max_chars * overlap_ratio)
     min_chars = min_tokens * CHARS_PER_TOKEN
@@ -115,7 +117,7 @@ def split_pages(
             block = block.strip()
             if not block:
                 continue
-            if h := _heading(block):
+            if h := _heading(block, numbered=not has_md):
                 level, title = h
                 if len(cur) >= min_chars:  # headings start a new chunk once the current one is big enough
                     flush()
