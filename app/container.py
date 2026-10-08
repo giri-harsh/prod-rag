@@ -113,9 +113,9 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
 
         llm = LoadLLM(s)
     else:
-        from app.services.llm import PortkeyLLM
+        from app.services.llm import make_llm
 
-        llm = PortkeyLLM(s, breakers)
+        llm = make_llm(s, breakers)
     sparse = ov.get("sparse") or make_sparse_encoder(s.sparse_backend)
     if "reranker" in ov:
         reranker = ov["reranker"]

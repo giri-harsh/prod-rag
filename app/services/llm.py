@@ -1,4 +1,5 @@
-"""Async chat LLM via Portkey (Groq models) with fallback, bounded concurrency, retries and breaker."""
+"""Async chat LLM for Groq models: via the Portkey gateway (USE_GATEWAY=true) or directly with in-code key failover (false).
+Both paths share the same timeout, tenacity retries, circuit breaker and concurrency bound."""
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.config import Settings
-from app.observability.metrics import LLM_TOKENS
+from app.observability.metrics import LLM_FAILOVER, LLM_TOKENS
 from app.resilience import Breakers, call_upstream
 
 
@@ -74,3 +75,64 @@ class PortkeyLLM:
         LLM_TOKENS.labels(feature, "prompt").inc(pt)
         LLM_TOKENS.labels(feature, "completion").inc(ct)
         return LLMResult(resp.choices[0].message.content or "", pt, ct)
+
+
+def failover_worthy(exc: BaseException) -> bool:
+    """Should we try the other Groq key? Yes for auth/quota/server/timeout/connection problems; no for 400/404/422
+    (the request itself is bad, a second key will fail the same way)."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status in (401, 403, 408, 409, 429) or status >= 500
+    return not isinstance(exc, (ValueError, TypeError))
+
+
+class GroqDirectLLM:
+    """Groq without the gateway. Targets are tried in order: primary key, then GROQ_FALLBACK_API_KEY (same model).
+    A key problem (401/403/429/5xx/timeout) fails over inside ONE attempt; tenacity then retries the whole call with backoff."""
+
+    def __init__(self, s: Settings, breakers: Breakers):
+        from groq import AsyncGroq
+
+        self._s, self._breaker = s, breakers["llm"]
+        self._sem = asyncio.Semaphore(s.llm_concurrency)
+        keys = [k for k in (s.groq_api_key, s.groq_fallback_api_key) if k]
+        if not keys:
+            raise RuntimeError("GROQ_API_KEY is required when USE_GATEWAY=false")
+        self._clients = [AsyncGroq(api_key=k.get_secret_value(), timeout=s.llm_timeout_s, max_retries=0) for k in keys]
+
+    def _kwargs(self, model: str, msgs: list, temperature: float) -> dict:
+        kw = {"model": model, "messages": msgs, "temperature": temperature, "max_completion_tokens": self._s.llm_max_tokens}
+        if model.startswith("openai/gpt-oss") and self._s.llm_reasoning_effort:
+            kw["reasoning_effort"] = self._s.llm_reasoning_effort
+        return kw
+
+    async def complete(self, system: str, user: str, *, feature: str, temperature: float = 0.0, fast: bool = False) -> LLMResult:
+        msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        model = self._s.llm_fallback_model if fast else self._s.llm_primary_model
+        kw = self._kwargs(model, msgs, temperature)
+
+        async def _call():
+            for i, client in enumerate(self._clients):
+                try:
+                    return await client.chat.completions.create(**kw)
+                except Exception as e:
+                    if i == len(self._clients) - 1 or not failover_worthy(e):
+                        raise
+                    LLM_FAILOVER.labels(type(e).__name__).inc()
+
+        async with self._sem:
+            resp = await call_upstream(self._breaker, _call, timeout_s=self._s.llm_timeout_s, attempts=self._s.max_attempts)
+        usage = getattr(resp, "usage", None)
+        pt, ct = getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0
+        LLM_TOKENS.labels(feature, "prompt").inc(pt)
+        LLM_TOKENS.labels(feature, "completion").inc(ct)
+        choice = resp.choices[0]
+        text = (choice.message.content or "").strip()
+        if not text:  # reasoning models can spend the whole budget thinking and return nothing
+            raise ValueError(f"empty completion from {model} (finish_reason={getattr(choice, 'finish_reason', None)}); raise LLM_MAX_TOKENS")
+        return LLMResult(text, pt, ct)
+
+
+def make_llm(s: Settings, breakers: Breakers):
+    """USE_GATEWAY=true -> Portkey (fallback chain + cache); false -> direct Groq with key failover."""
+    return PortkeyLLM(s, breakers) if s.use_gateway else GroqDirectLLM(s, breakers)

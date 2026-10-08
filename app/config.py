@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # --- LLM / gateway ---
     groq_api_key: SecretStr | None = None
     portkey_api_key: SecretStr | None = None
+    use_gateway: bool = True  # False: call Groq directly (no Portkey); primary->fallback KEY failover is done in code
+    groq_fallback_api_key: SecretStr | None = None
+    llm_reasoning_effort: str = "low"  # sent only to openai/gpt-oss-* models
+    llm_max_tokens: int = Field(2048, ge=16)  # max_completion_tokens (reasoning models spend part of it thinking)
     groq_slug: str = "rag"
     groq_slug_fallback: str = "brag"
     llm_primary_model: str = "llama-3.3-70b-versatile"
@@ -113,7 +117,8 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _cross_checks(self):
         if self.app_env == "prod":
-            missing = [n for n in ("groq_api_key", "portkey_api_key", "gemini_api_key") if not getattr(self, n)]
+            required = ["groq_api_key", "gemini_api_key"] + (["portkey_api_key"] if self.use_gateway else [])
+            missing = [n for n in required if not getattr(self, n)]
             if missing:
                 raise ValueError(f"APP_ENV=prod requires: {', '.join(m.upper() for m in missing)}")
             if self.qdrant_url == ":memory:":

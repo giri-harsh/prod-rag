@@ -80,6 +80,54 @@ prompts:
 """
 
 
+def build_guard_llm(s: Settings):
+    """Groq chat model for the NeMo self-check rails. With GROQ_FALLBACK_API_KEY set, a failing primary key fails over to it."""
+    from langchain_groq import ChatGroq
+
+    def one(key) -> ChatGroq:
+        kw = {"api_key": key.get_secret_value(), "model": s.guard_model, "temperature": 0, "timeout": s.llm_timeout_s, "max_retries": 0}
+        if s.guard_model.startswith("openai/gpt-oss") and s.llm_reasoning_effort:
+            kw["reasoning_effort"] = s.llm_reasoning_effort
+        return ChatGroq(**kw)
+
+    keys = [k for k in (s.groq_api_key, s.groq_fallback_api_key) if k]
+    if not keys:
+        raise RuntimeError("GROQ_API_KEY is required for the guardrails")
+    models = [one(k) for k in keys]
+    return models[0] if len(models) == 1 else FailoverChat(models=models)
+
+
+from langchain_core.language_models.chat_models import BaseChatModel  # noqa: E402
+
+
+class FailoverChat(BaseChatModel):
+    """Tries each wrapped chat model in order; the next one is used when the previous raises (key/quota/outage)."""
+
+    models: list[BaseChatModel]
+
+    @property
+    def _llm_type(self) -> str:
+        return "failover-chat"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        last = None
+        for m in self.models:
+            try:
+                return m._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            except Exception as e:  # noqa: BLE001
+                last = e
+        raise last
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        last = None
+        for m in self.models:
+            try:
+                return await m._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            except Exception as e:  # noqa: BLE001
+                last = e
+        raise last
+
+
 class Guardrails:
     def __init__(self, s: Settings, breakers: Breakers):
         self._s, self._breaker = s, breakers["guardrails"]
@@ -98,15 +146,7 @@ class Guardrails:
             from nemoguardrails.integrations.langchain.llm_adapter import LangChainLLMAdapter
 
             if llm is None:
-                from langchain_groq import ChatGroq
-
-                llm = ChatGroq(
-                    api_key=self._s.groq_api_key.get_secret_value() if self._s.groq_api_key else None,
-                    model=self._s.guard_model,
-                    temperature=0,
-                    timeout=self._s.llm_timeout_s,
-                    max_retries=0,
-                )
+                llm = build_guard_llm(self._s)
             cfg = RailsConfig.from_content(yaml_content=_yaml())
             self._adapter = LangChainLLMAdapter(llm)
             self._rails = LLMRails(cfg, llm=self._adapter)
