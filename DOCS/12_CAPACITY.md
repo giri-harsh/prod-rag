@@ -43,13 +43,22 @@ Locust, 50 tenants (75 chunks each), mix 70% technical / 20% follow-up / 10% blo
    and the HTTP runs above followed. `GUARD_ENGINE=runtime` restores the full Colang runtime; `test_guard_engines_agree_on_structured_results` checks both modes give identical block decisions.
    Remaining per-request CPU is spread out (checkpoint serialisation, fastembed BM25, langgraph); the single-connection checkpoint lock is the next candidate (`ckpt.get`/`put` still queue under 300 concurrent requests in one process).
 
+## Correction: the load test did not include the reranker
+`APP_ENV=loadtest` swaps FlashRank for a no-op, so the numbers above exclude it. Measured afterwards with the real model
+(`ms-marco-TinyBERT-L-2-v2`, ONNX, CPU): **~210 ms per rerank of 20 candidates x ~3,600 chars** (about 50 ms for 4 short docs), 3 s one-off load.
+Only uncached requests reach the reranker, so at a 70% semantic-cache hit rate it adds ~63 ms CPU per request on average, which is *more than the rest
+of the request path combined* (~30 ms/request at the measured 130 RPS / 4 workers). Realistic capacity with reranking is therefore roughly **a third of the
+measured figure**. Levers: lower `FUSED_K` (20 -> 10 halves the cost), truncate chunk text before reranking, or run the reranker in a separate scaled service.
+Relevance scores are a near-binary sigmoid (relevant ~0.999, irrelevant ~0.000; an off-topic query scored 0.0 for every chunk), so the default
+`RERANK_MIN_SCORE=0.05` cleanly separates them and the grade/rewrite loop terminates on off-topic questions with the fixed answer.
+
 ## Per-pod capacity and pod formula
 Measured: ~130 RPS for 4 workers on a laptop that is also running the client and every datastore, i.e. ~32 RPS/worker upper bound. Planning number (derated 40% for real network I/O,
-larger real payloads and noisy neighbours): **~20 RPS per gunicorn worker** (CPU-bound, independent of LLM latency because LLM waits are async). A pod with 4 workers
-(2-4 vCPU request/limit in `deploy/k8s/base/api.yaml`) -> ~80 RPS; keep 30% headroom -> **~56 RPS/pod**. Re-measure on your hardware before committing to it.
+larger real payloads and noisy neighbours): **~10 RPS per gunicorn worker (with the real reranker at a ~70% cache hit rate; ~20 without it)** (CPU-bound, independent of LLM latency because LLM waits are async). A pod with 4 workers
+(2-4 vCPU request/limit in `deploy/k8s/base/api.yaml`) -> ~40 RPS; keep 30% headroom -> **~28 RPS/pod**. Re-measure on your hardware before committing to it.
 
 ```
-pods = ceil( peak_rps / (workers_per_pod * rps_per_worker * 0.7) )          # 4 * 20 * 0.7 = 56
+pods = ceil( peak_rps / (workers_per_pod * rps_per_worker * 0.7) )          # 4 * 10 * 0.7 = 28
 postgres_connections = pods * workers * PG_POOL_MAX   -> put pgbouncer in front (compose + k8s base include it)
 groq_requests_per_s  = peak_rps * (1 + miss_rate * (1 + output_guard + rewrites))   # = 1.9 per request at a 70% cache hit rate (see below)
 ```
@@ -62,7 +71,7 @@ groq_requests_per_s  = peak_rps * (1 + miss_rate * (1 + output_guard + rewrites)
 | peak / average ratio | 5x |
 | => average RPS | 58 (580) |
 | => **peak RPS** | **~290 (~2,900)** |
-| => API pods at 56 RPS/pod | **~6 (~52)** |
+| => API pods at 28 RPS/pod | **~11 (~104)** |
 
 ## The real ceiling is the upstream LLM quota, not the API
 Per uncached request: input guard (8B) + planner (70B, usually Redis-cached) + responder (70B) + output guard (8B) = 3-4 Groq calls; a semantic-cache hit costs
