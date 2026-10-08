@@ -34,7 +34,7 @@ See `.env.example` for a template.
 ## Added in the hardening phase
 | Variable | Default | Purpose |
 |---|---|---|
-| `PREFETCH_K` / `FUSED_K` / `FINAL_K` | 40 / 20 / 5 | Per-branch candidates / after RRF / after rerank |
+| `PREFETCH_K` / `FUSED_K` / `FINAL_K` | 40 / 10 / 5 | Per-branch candidates / after RRF / after rerank |
 | `RERANK_MIN_SCORE` | 0.05 | Below this top score the retrieval is graded poor (rewrite + retry) |
 | `MAX_RETRIEVAL_ITERATIONS` | 2 | Retrieval passes per request |
 | `SPARSE_BACKEND` | `bm25` | `bm25` (fastembed `Qdrant/bm25`) or `simple` (built-in tokenizer; Qdrant IDF modifier) |
@@ -49,3 +49,18 @@ See `.env.example` for a template.
 | `LANGSMITH_TRACING` | false | Trace graph runs to LangSmith (PII-redacted) |
 | `LOADTEST_*_MS` | 800/300, 80/30, 250 | `APP_ENV=loadtest` simulated LLM / embed / guard latency |
 Per-tenant assistant domain: `python -m app.auth.cli tenant-set --tenant T --domain "..."` (falls back to `ASSISTANT_DOMAIN`).
+
+## Added with the close-out phase
+| Variable | Default | Purpose |
+|---|---|---|
+| `REBUILD_LOCK_TTL_S` | 60 | Rebuild lock/state TTL; a heartbeat renews it every TTL/3 while the rebuild is alive, so expiry means the holder died |
+| `KEY_CACHE_TTL_S` / `KEY_CACHE_SIZE` | 30 / 10000 | In-process LRU of valid API keys (revocation also evicts instantly via Redis pub/sub `auth:evict`) |
+| `KEY_NEG_TTL_S` | 60 | Redis negative cache of unknown key hashes |
+| `AUTH_FAIL_PER_MIN` | 20 | Failed authentications per client IP per minute before 429 |
+| `TRUSTED_PROXIES` | (empty) | Comma-separated IPs/CIDRs allowed to set `X-Forwarded-For` |
+| `RERANK_WORKERS` | 2 | Threads in the dedicated reranker pool (max concurrent rerank batches per process) |
+| `RERANK_THREADS` | 1 | ONNX Runtime intra-op threads per batch (workers x threads = reranker CPU threads per process) |
+| `RERANK_MAX_LENGTH` | 512 | Passages are truncated to this many tokens (and pre-cut by characters) before scoring |
+| `RERANK_TIMEOUT_S` | 10 | Queue wait + scoring; on timeout the fused order is used (score 1.0) |
+| `FLASHRANK_CACHE` | `/opt/flashrank` | Directory holding the baked FlashRank ONNX model |
+| `LOADTEST_REAL_RERANKER` | false | With `APP_ENV=loadtest`, use the real reranker instead of the no-op |

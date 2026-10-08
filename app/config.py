@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     max_query_chars: int = 4000
     # --- retrieval (hybrid dense + sparse -> RRF -> rerank -> grade) ---
     prefetch_k: int = Field(40, ge=1)  # per-branch candidates (dense and sparse)
-    fused_k: int = Field(20, ge=1)  # after server-side RRF fusion
+    fused_k: int = Field(10, ge=1)  # after server-side RRF fusion (10 beat 20: same hit@5, p95 -32..-73% under load; see DOCS/12)
     final_k: int = Field(5, ge=1)  # after rerank, sent to the LLM
     rerank_min_score: float = 0.05  # top rerank score below this => grade fails (rewrite + retry)
     rerank_workers: int = Field(2, ge=1)  # bounded thread pool for the ONNX reranker (per process)

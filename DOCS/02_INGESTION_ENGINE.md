@@ -56,3 +56,11 @@ The engine is "Universal," meaning it automatically detects folder structures an
 # Command to run the full ingestion
 python -m app.ingestion.processor DATA --wipe
 ```
+
+
+## Rebuild coordination (close-out phase)
+* **One rebuild per alias**: a Redis `SET NX EX` lock (`rebuild:<alias>:lock`) with a heartbeat; if Redis is unreachable a Postgres session advisory lock is used (mutual exclusion only). A second rebuild fails fast with `RebuildInProgress` (CLI exit code 2; `POST /ingest` with `rebuild=true` returns **409**).
+* **Dual-write**: while a rebuild runs, its state `{live, candidate}` is in Redis and every `VectorStore.write_points` / `delete_where` aimed at the live collection is mirrored to the candidate, so writes for other tenants made during the rebuild survive the swap.
+* **Reconciliation** just before the swap compares `content_hash` per point between live and candidate for every tenant except the rebuilt one, copies what is missing or different and deletes what only the candidate has.
+* **Crash safety**: if the holder dies the heartbeat stops, lock and state expire after `REBUILD_LOCK_TTL_S`, mirroring stops, the live alias was never touched, and the next rebuild deletes orphaned `<alias>_vN` candidates (N above the live version). A handled exception deletes its own candidate.
+* Limits: a rebuild of one tenant copies all other tenants' points (cost grows with the whole index); the rebuilt tenant's own writes during the rebuild are mirrored too but are superseded by the fresh ingest.

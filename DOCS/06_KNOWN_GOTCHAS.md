@@ -69,9 +69,9 @@ This ensures your FastAPI server starts in **milliseconds**, and Logfire is guar
 * **One in-flight request per session.** `/query` takes a Redis lock `lock:thread:<tenant:user:session>` (TTL = 4x `LLM_TIMEOUT_S`); a second concurrent request on the same session gets **409** with `Retry-After: 1`. Reason: with `durability="exit"` two concurrent runs would each write the checkpoint and the later one would silently drop the other's turn. If Redis is down the lock is skipped (logged).
 * **Semantic cache keys on the user's own words** (never on the planner's refined query) and only for the **first turn** of a session; the LLM's `standalone` flag is ignored.
 * **Request bodies over 64 KB** are rejected with 413 even when chunked or when `Content-Length` is missing/malformed.
-* **A blue/green `--rebuild` copies other tenants' points at the start.** Writes to other tenants made while the rebuild runs go to the old collection and are not carried over; run rebuilds in a quiet window or re-ingest those tenants afterwards. Concurrent rebuilds of the same alias are not coordinated (the second fails on `create_collection`).
+* **Blue/green `--rebuild` is coordinated** (see DOCS/02): one rebuild per alias (second one -> 409 / CLI exit 2), writes made during a rebuild are dual-written to the candidate, and a reconciliation pass runs before the swap. The remaining cost is that a rebuild copies every other tenant's points.
 * Stale-point cleanup on re-ingest is scoped by `(tenant, source, source_type)`; the same relative filename under another `source_type` is a different file.
-* Unauthenticated requests with random keys each cost one Postgres lookup (negative results are cached for `key_cache_ttl`, 10 s); put an IP-level limiter at the edge.
+* Unauthenticated requests with random keys: one Postgres lookup per unique key per 60 s (negative cache) and a per-IP failed-auth limit (429); see the auth section below.
 
 ## Auth lookup cost (O-2)
 * `X-API-Key` lookups go: in-process LRU of valid keys (`KEY_CACHE_TTL_S`=30, `KEY_CACHE_SIZE`) -> Redis negative cache of unknown key hashes (`KEY_NEG_TTL_S`=60) -> Postgres. A random-key flood therefore costs one Postgres lookup per unique key per 60 s.
