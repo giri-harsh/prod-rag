@@ -66,3 +66,12 @@ __pycache__/
 # assistant tooling (keep local, never commit)
 .claude/
 CLAUDE.md
+
+# env files: only .env.example is tracked
+.env
+.env.*
+!.env.example
+.env.bak
+
+# overnight-run state (local only)
+_night/
