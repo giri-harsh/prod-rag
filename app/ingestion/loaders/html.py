@@ -21,7 +21,7 @@ def parse_html(file_path: str):
             # 1b. Preserve heading structure as markdown so the chunker can build heading paths
             for level in range(1, 7):
                 for h in soup.find_all(f"h{level}"):
-                    h.replace_with(f"\n\n{'#' * level} {h.get_text(' ', strip=True)}\n\n")
+                    h.replace_with(f"\n\n\x01{'#' * level} {h.get_text(' ', strip=True)}\n\n")  # \x01 marks REAL headings
 
             # 2. Extract Text
             text = soup.get_text(separator="\n")
@@ -35,6 +35,8 @@ def parse_html(file_path: str):
                 elif not blank:
                     out.append("")
                     blank = True
+            # real headings keep their '#'; any other line starting with '#' (code comments) is escaped
+            out = [ln[1:] if ln.startswith("\x01") else ("\\" + ln if ln.startswith("#") else ln) for ln in out]
             text_clean = "\n".join(out).strip()
 
             return text_clean

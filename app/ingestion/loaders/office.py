@@ -1,6 +1,11 @@
 import logfire
 
 
+def _esc(text: str) -> str:
+    """Code samples contain '# comment' lines; escape them so the chunker does not mistake them for markdown headings."""
+    return "\n".join("\\" + ln.lstrip() if ln.lstrip().startswith("#") else ln for ln in text.split("\n"))
+
+
 def parse_office(file_path: str) -> str:
     """Parse .docx / .pptx locally with python-docx / python-pptx. Headings become markdown headings."""
     with logfire.span("Office parsing", filename=file_path):
@@ -20,10 +25,10 @@ def parse_office(file_path: str) -> str:
                 elif st.lower() == "title":
                     parts.append(f"# {p.text.strip()}")
                 else:
-                    parts.append(p.text)
+                    parts.append(_esc(p.text))
             for t in d.tables:
                 for row in t.rows:
-                    parts.append(" | ".join(c.text.strip() for c in row.cells))
+                    parts.append(_esc(" | ".join(c.text.strip() for c in row.cells)))
             return "\n\n".join(parts)
         if ext == "pptx":
             from pptx import Presentation
@@ -32,7 +37,7 @@ def parse_office(file_path: str) -> str:
             for i, slide in enumerate(Presentation(file_path).slides, 1):
                 title = slide.shapes.title.text_frame.text.strip() if slide.shapes.title is not None else ""
                 texts = [
-                    sh.text_frame.text for sh in slide.shapes
+                    _esc(sh.text_frame.text) for sh in slide.shapes
                     if sh.has_text_frame and sh.text_frame.text.strip() and sh.text_frame.text.strip() != title
                 ]
                 if slide.has_notes_slide and slide.notes_slide.notes_text_frame.text.strip():

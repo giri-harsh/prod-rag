@@ -164,3 +164,22 @@ async def test_loaders_html_txt_docx_pptx(tmp_path):
     assert parse_text(str(tmp_path / "a.txt")) == "hello txt"
     assert "hello docx" in parse_office(str(tmp_path / "a.docx"))
     assert "hello pptx" in parse_office(str(tmp_path / "a.pptx"))
+
+
+def test_code_comment_lines_are_not_treated_as_headings(tmp_path):
+    from docx import Document
+
+    from app.ingestion.chunking.splitter import split_pages
+    from app.ingestion.loaders.html import parse_html
+    from app.ingestion.loaders.office import parse_office
+
+    d = Document()
+    d.add_heading("Real Heading", level=1)
+    d.add_paragraph("# Every Monday at 9:00 AM")  # a YAML/bash comment inside a code sample
+    d.add_paragraph("schedule: 0 9 * * 1")
+    d.save(tmp_path / "c.docx")
+    (tmp_path / "c.html").write_text("<h2>Real H2</h2><pre># a shell comment\necho hi</pre><p>after</p>", encoding="utf-8")
+    for text in (parse_office(str(tmp_path / "c.docx")), parse_html(str(tmp_path / "c.html"))):
+        paths = {c.heading_path for c in split_pages([(None, text)], 900, 0.15, 1)}
+        assert not any("Every Monday" in p or "shell comment" in p for p in paths), paths
+        assert any(p.startswith("Real") for p in paths)
