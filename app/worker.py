@@ -34,7 +34,13 @@ async def startup(ctx):
         from app.services.embedding import GeminiEmbedder
         from app.services.embedding_cache import CachedEmbedder
 
-        ctx["embedder"] = CachedEmbedder(GeminiEmbedder(s, b), ctx["redis"], s.embed_cache_ttl_s)
+        if s.app_env == "loadtest":
+            from app.loadtest import LoadEmbedder
+
+            inner = LoadEmbedder(s)
+        else:
+            inner = GeminiEmbedder(s, b)
+        ctx["embedder"] = CachedEmbedder(inner, ctx["redis"], s.embed_cache_ttl_s)
     if "sparse" not in ctx:
         ctx["sparse"] = make_sparse_encoder(s.sparse_backend)
 

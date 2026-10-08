@@ -29,7 +29,13 @@ async def _run(a) -> int:
         r = aioredis.from_url(s.redis_url)
         vs = VectorStore(client, s, b, RebuildCoordinator(r, s.qdrant_collection, s.direct_database_url or s.database_url, s.rebuild_lock_ttl_s))
         try:
-            emb = CachedEmbedder(GeminiEmbedder(s, b), r, s.embed_cache_ttl_s)
+            if s.app_env == "loadtest":  # fake models + real datastores (docker verification without API keys)
+                from app.loadtest import LoadEmbedder
+
+                inner = LoadEmbedder(s)
+            else:
+                inner = GeminiEmbedder(s, b)
+            emb = CachedEmbedder(inner, r, s.embed_cache_ttl_s)
             try:
                 rep = await ingest(vs, emb, make_sparse_encoder(s.sparse_backend), s, a.tenant, a.path, a.source_type, a.rebuild)
             except RebuildInProgress:
