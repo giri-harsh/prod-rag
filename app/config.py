@@ -12,6 +12,12 @@ class ConfigError(RuntimeError):
     pass
 
 
+def _looks_pooled(url: str) -> bool:
+    """True when a Postgres URL points at a connection pooler (host name or the conventional pgbouncer port)."""
+    host = url.split("@")[-1].split("/")[0].split("?")[0].lower()
+    return ":6432" in host or any(t in host for t in ("pgbouncer", "pgpool", "-pooler", "pooler."))
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
@@ -129,6 +135,15 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must start with postgresql://")
         if not self.redis_url.startswith(("redis://", "rediss://")):
             raise ValueError("REDIS_URL must start with redis:// or rediss://")
+        if self.app_env == "prod" and not self.direct_database_url and _looks_pooled(self.database_url):
+            # Migrations and the rebuild coordinator's fallback lock need ONE session that survives several
+            # statements: `PostgresSaver.setup()` runs DDL, and pg_try_advisory_lock() is released when the
+            # session ends. A transaction-mode pooler hands the server connection back after every transaction,
+            # so both would silently misbehave. DIRECT_DATABASE_URL is what keeps them off the pooler.
+            raise ValueError(
+                "DATABASE_URL looks like a transaction-mode pooler (pgbouncer/pgpool/port 6432); set "
+                "DIRECT_DATABASE_URL to a session-mode URL for migrations and the rebuild lock"
+            )
         return self
 
 

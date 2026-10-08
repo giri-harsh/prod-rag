@@ -1,0 +1,148 @@
+{
+  "n_labels": 60,
+  "sources": [
+    "architecture.pptx",
+    "cronjobs.docx",
+    "job_management.html",
+    "monitor_job.docx",
+    "parallel_work_queue.txt",
+    "pods_autoscale.html"
+  ],
+  "chunks_indexed": 83,
+  "qdrant": "http://127.0.0.1:6333",
+  "ingested_this_run": false,
+  "ingest_seconds": 0.0,
+  "query_embeddings_this_run": 0,
+  "embedding": "gemini-embedding-2/768 (REAL Gemini API)",
+  "sparse": "bm25",
+  "reranker": "FlashRank (real)",
+  "ks": [
+    10,
+    20
+  ],
+  "default_config": "hybrid|k=10|rerank=on",
+  "best_config": "hybrid|k=10|rerank=off",
+  "margin_hit@5_best_minus_default": 0.0,
+  "cells": {
+    "dense|k=10|rerank=off": {
+      "hit@1": 98.3,
+      "hit@3": 98.3,
+      "hit@5": 100.0,
+      "mrr": 98.8,
+      "phrase@1": 88.3,
+      "phrase@5": 100.0,
+      "search_ms": 14.8,
+      "rerank_ms": 0.0
+    },
+    "dense|k=10|rerank=on": {
+      "hit@1": 96.7,
+      "hit@3": 98.3,
+      "hit@5": 100.0,
+      "mrr": 97.9,
+      "phrase@1": 78.3,
+      "phrase@5": 100.0,
+      "search_ms": 14.8,
+      "rerank_ms": 53.4
+    },
+    "dense|k=20|rerank=off": {
+      "hit@1": 98.3,
+      "hit@3": 98.3,
+      "hit@5": 100.0,
+      "mrr": 98.8,
+      "phrase@1": 88.3,
+      "phrase@5": 100.0,
+      "search_ms": 18.4,
+      "rerank_ms": 0.0
+    },
+    "dense|k=20|rerank=on": {
+      "hit@1": 95.0,
+      "hit@3": 96.7,
+      "hit@5": 100.0,
+      "mrr": 96.7,
+      "phrase@1": 76.7,
+      "phrase@5": 95.0,
+      "search_ms": 18.4,
+      "rerank_ms": 115.5
+    },
+    "sparse|k=10|rerank=off": {
+      "hit@1": 93.3,
+      "hit@3": 100.0,
+      "hit@5": 100.0,
+      "mrr": 96.7,
+      "phrase@1": 85.0,
+      "phrase@5": 96.7,
+      "search_ms": 16.3,
+      "rerank_ms": 0.0
+    },
+    "sparse|k=10|rerank=on": {
+      "hit@1": 95.0,
+      "hit@3": 98.3,
+      "hit@5": 98.3,
+      "mrr": 96.7,
+      "phrase@1": 76.7,
+      "phrase@5": 98.3,
+      "search_ms": 16.3,
+      "rerank_ms": 57.8
+    },
+    "sparse|k=20|rerank=off": {
+      "hit@1": 93.3,
+      "hit@3": 100.0,
+      "hit@5": 100.0,
+      "mrr": 96.7,
+      "phrase@1": 85.0,
+      "phrase@5": 96.7,
+      "search_ms": 19.3,
+      "rerank_ms": 0.0
+    },
+    "sparse|k=20|rerank=on": {
+      "hit@1": 95.0,
+      "hit@3": 96.7,
+      "hit@5": 100.0,
+      "mrr": 96.7,
+      "phrase@1": 76.7,
+      "phrase@5": 95.0,
+      "search_ms": 19.3,
+      "rerank_ms": 120.1
+    },
+    "hybrid|k=10|rerank=off": {
+      "hit@1": 100.0,
+      "hit@3": 100.0,
+      "hit@5": 100.0,
+      "mrr": 100.0,
+      "phrase@1": 95.0,
+      "phrase@5": 100.0,
+      "search_ms": 16.9,
+      "rerank_ms": 0.0
+    },
+    "hybrid|k=10|rerank=on": {
+      "hit@1": 95.0,
+      "hit@3": 98.3,
+      "hit@5": 100.0,
+      "mrr": 96.8,
+      "phrase@1": 76.7,
+      "phrase@5": 98.3,
+      "search_ms": 16.9,
+      "rerank_ms": 55.5
+    },
+    "hybrid|k=20|rerank=off": {
+      "hit@1": 100.0,
+      "hit@3": 100.0,
+      "hit@5": 100.0,
+      "mrr": 100.0,
+      "phrase@1": 91.7,
+      "phrase@5": 100.0,
+      "search_ms": 18.0,
+      "rerank_ms": 0.0
+    },
+    "hybrid|k=20|rerank=on": {
+      "hit@1": 95.0,
+      "hit@3": 96.7,
+      "hit@5": 100.0,
+      "mrr": 96.7,
+      "phrase@1": 76.7,
+      "phrase@5": 95.0,
+      "search_ms": 18.0,
+      "rerank_ms": 119.7
+    }
+  }
+}

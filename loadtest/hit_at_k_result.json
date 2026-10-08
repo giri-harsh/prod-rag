@@ -1,12 +1,12 @@
 {
-  "n": 30,
+  "n": 60,
   "dense": "FAKE (hash bag-of-words)",
   "sparse": "real fastembed BM25",
   "rerank": "real FlashRank",
   "by_k": {
     "20": {
       "hit@5": 100.0,
-      "phrase@5": 96.7
+      "phrase@5": 95.0
     },
     "10": {
       "hit@5": 100.0,

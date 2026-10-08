@@ -82,6 +82,12 @@ web/test-results/
 web/playwright-report/
 web/.vite/
 
+# database dumps written by scripts/backup_restore.sh
+backups/
+
+# local caches (query-vector cache for loadtest/eval_retrieval.py, etc.)
+.cache/
+
 # local run artifacts
 live_results.json
 live_report.md

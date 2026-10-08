@@ -160,6 +160,22 @@ def test_prod_requires_portkey_only_when_the_gateway_is_used():
         load_settings(use_gateway=False, **{**base, "groq_api_key": None})
 
 
+def test_prod_refuses_a_pooled_database_url_without_a_session_mode_url():
+    """Migrations and the rebuild advisory lock need a session that outlives one transaction; a transaction-mode
+    pooler silently breaks both, so prod must also carry DIRECT_DATABASE_URL."""
+    base = dict(app_env="prod", groq_api_key="g", gemini_api_key="m", use_gateway=False,
+                redis_url="redis://x", qdrant_url="http://q:6333", _env_file=None)
+    for pooled in ("postgresql://u:p@pgbouncer:5432/rag", "postgresql://u:p@db.example:6432/rag",
+                   "postgresql://u:p@proj-pooler.supabase.com:5432/rag"):
+        with pytest.raises(ConfigError, match="DIRECT_DATABASE_URL"):
+            load_settings(database_url=pooled, **base)
+        s = load_settings(database_url=pooled, direct_database_url="postgresql://u:p@db.example:5432/rag", **base)
+        assert s.direct_database_url  # with the session-mode URL present the same config is fine
+    # a plain host is not treated as a pooler, and dev/test never fail on this
+    assert load_settings(database_url="postgresql://u:p@postgres:5432/rag", **base).direct_database_url is None
+    assert load_settings(**{**base, "app_env": "dev", "database_url": "postgresql://u:p@pgbouncer:5432/rag"})
+
+
 async def test_guard_llm_fails_over_between_keys():
     class Boom(FakeListChatModel):
         async def _agenerate(self, *a, **k):

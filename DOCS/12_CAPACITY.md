@@ -43,16 +43,16 @@ Compared with run 3 (no reranker, 128.6 RPS at 500 users) the real reranker cost
 Rule: use 10 if its p95 improves by >= 20% AND hit@5 drops by <= 2 points; otherwise keep 20.
 
 * p95 improvement of K=10 over K=20: -32% (50 users), -73% (200), -60% (500)  -> condition 1 met at every step.
-* hit@5 on the labeled set (`loadtest/labeled_set.json`: 30 questions about `DATA/true_data`, 6 source files; `python loadtest/eval_hit_at_k.py`, result in `loadtest/hit_at_k_result.json`):
+* hit@5 on the labeled set (`loadtest/labeled_set.json`: 60 questions about `DATA/true_data`, 6 source files / 83 chunks; `python loadtest/eval_hit_at_k.py`, result in `loadtest/hit_at_k_result.json`):
 
 | FUSED_K | hit@5 (expected source in top 5) | phrase@5 (answer-bearing phrase in top 5) |
 |---|---|---|
-| 20 | 100.0% | 96.7% |
+| 20 | 100.0% | 95.0% |
 | 10 | 100.0% | 100.0% |
 
   Drop = 0.0 points -> condition 2 met. **Decision: `FUSED_K=10` is now the default.**
-* Limits of this measurement: the **dense side is fake** (hash bag-of-words, not a semantic model), only 6 documents / 66 chunks, and hit@5 saturates; it shows K=10 does not hurt in this setup, not that recall is unchanged on a large real corpus.
-  Re-run the script on your own labeled set before relying on it (*unverified* for real embeddings and large corpora).
+* Limits of this measurement: the **dense side is fake** (hash bag-of-words, not a semantic model), only 6 documents / 83 chunks, and hit@5 saturates; it shows K=10 does not hurt in this setup, not that recall is unchanged on a large real corpus.
+* The same comparison with **real Gemini embeddings** reaches the same conclusion (identical hit@k and MRR at K=10 and K=20, half the rerank CPU at K=10) and adds hit@1/MRR/phrase@1 per retrieval mode: [13_RETRIEVAL_EVAL.md](13_RETRIEVAL_EVAL.md). Still *unverified* for large corpora.
 
 ## 3. Per-pod capacity and the pod formula
 Measured peak with the real reranker at K=10: **63 RPS for 4 workers (~16 RPS/worker)** on this shared laptop. Planning derate (shared hardware, real network I/O, noisy neighbours): use 70% -> **~11 RPS/worker, ~44 RPS per 4-worker pod**.

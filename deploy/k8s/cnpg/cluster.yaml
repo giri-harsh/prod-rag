@@ -1,0 +1,155 @@
+# CloudNativePG cluster for the RAG application database: 3 instances (1 primary + 2 synchronous-capable
+# replicas), continuous WAL archiving to object storage and a nightly base backup.
+#
+# NOT applied by deploy/k8s/base: the operator and its CRDs have to exist first.
+#   kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.27/releases/cnpg-1.27.0.yaml
+#   kubectl -n rag create secret generic rag-pg-app --from-literal=username=rag --from-literal=password='...'
+#   kubectl -n rag create secret generic rag-pg-backup --from-literal=ACCESS_KEY_ID=... --from-literal=ACCESS_SECRET_KEY=...
+#   kubectl apply -k deploy/k8s/cnpg
+# Then point the app at the services this creates (see DOCS/16_POSTGRES_HA.md):
+#   DATABASE_URL        -> rag-pg-pooler-rw   (pgbouncer, transaction mode)
+#   DIRECT_DATABASE_URL -> rag-pg-rw          (session mode; migrations and the rebuild advisory lock)
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: rag-pg
+  namespace: rag
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.10
+
+  # A failover must not lose a committed transaction: one replica has to confirm every commit. `dataDurability:
+  # required` is the default - with 3 instances, losing ONE replica still leaves a candidate, but losing both
+  # blocks writes. Set dataDurability: preferred if availability matters more than the last transaction.
+  postgresql:
+    synchronous:
+      method: any
+      number: 1
+    parameters:
+      # max_connections is sized for the poolers, not for the app: 2 pooler replicas x default_pool_size 25 = 50
+      # server connections, plus the operator's own, plus superuser_reserved_connections.
+      max_connections: "200"
+      shared_buffers: 512MB
+      effective_cache_size: 1536MB
+      work_mem: 8MB
+      maintenance_work_mem: 128MB
+      random_page_cost: "1.1"              # SSD-backed PVC
+      max_wal_size: 2GB
+      checkpoint_completion_target: "0.9"
+      # the LangGraph checkpointer writes small rows constantly; keep the statement log honest but not noisy
+      log_min_duration_statement: "500"
+      log_checkpoints: "on"
+      log_lock_waits: "on"
+      log_autovacuum_min_duration: "1000"
+      idle_in_transaction_session_timeout: "60000"
+      statement_timeout: "60000"           # no application query is allowed to run for a minute
+      pg_stat_statements.max: "5000"
+    shared_preload_libraries:
+      - pg_stat_statements
+
+  bootstrap:
+    initdb:
+      database: rag
+      owner: rag
+      secret:
+        name: rag-pg-app            # username/password for the app role; CNPG also publishes rag-pg-app itself
+      encoding: UTF8
+      localeCType: C
+      localeCollate: C              # deterministic ordering, and no collation-version breakage on glibc upgrades
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS pg_stat_statements
+
+  storage:
+    size: 20Gi
+    storageClass: ""                # "" = cluster default; pin this in your overlay
+  walStorage:                       # WAL on its own volume: a WAL spike cannot fill the data volume
+    size: 10Gi
+    storageClass: ""
+
+  resources:
+    requests: {cpu: "500m", memory: 2Gi}
+    limits: {cpu: "2", memory: 2Gi}   # memory request == limit (Guaranteed QoS): Postgres must not be evicted
+
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname   # one instance per node; use topology.kubernetes.io/zone if you have 3 zones
+    podAntiAffinityType: required
+
+  # Rolling updates: switch over to a replica instead of restarting the primary in place (seconds, not minutes).
+  primaryUpdateStrategy: unsupervised
+  primaryUpdateMethod: switchover
+  enableSuperuserAccess: false      # no postgres-superuser secret unless someone asks for it
+  failoverDelay: 0
+  smartShutdownTimeout: 15
+
+  monitoring:
+    enablePodMonitor: true          # needs the Prometheus operator; otherwise scrape :9187 yourself
+
+  backup:
+    retentionPolicy: 30d
+    volumeSnapshot: null
+    barmanObjectStore:
+      destinationPath: s3://CHANGE-ME-bucket/rag-pg
+      endpointURL: https://s3.eu-central-1.amazonaws.com
+      s3Credentials:
+        accessKeyId: {name: rag-pg-backup, key: ACCESS_KEY_ID}
+        secretAccessKey: {name: rag-pg-backup, key: ACCESS_SECRET_KEY}
+      wal:
+        compression: gzip
+        maxParallel: 4              # WAL archiving must keep up with writes or the primary stalls
+      data:
+        compression: gzip
+        jobs: 2
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: rag-pg-nightly
+  namespace: rag
+spec:
+  # SIX fields: CNPG uses robfig/cron with seconds first. "30 2 * * *" would be read as 02:00 every 30 s of
+  # minute 2 - a five-field schedule here is the most common CNPG mistake.
+  schedule: "0 30 2 * * *"          # 02:30 UTC daily
+  backupOwnerReference: self
+  immediate: true                   # take one as soon as this object is created, so recovery is possible today
+  cluster:
+    name: rag-pg
+---
+# pgbouncer managed by the operator. It replaces deploy/k8s/base/pgbouncer.yaml when the cluster runs on CNPG:
+# the Pooler follows failover automatically (it tracks the -rw service), which a hand-rolled Deployment does not.
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: rag-pg-pooler-rw
+  namespace: rag
+spec:
+  cluster:
+    name: rag-pg
+  instances: 2
+  type: rw
+  monitoring:
+    enablePodMonitor: true
+  pgbouncer:
+    poolMode: transaction           # safe here only because the app sets prepare_threshold=0 (app/container.py)
+    parameters:
+      max_client_conn: "2000"
+      default_pool_size: "25"
+      min_pool_size: "5"            # keep a few warm: the API's readiness probe should not pay connect latency
+      reserve_pool_size: "5"
+      reserve_pool_timeout: "3"
+      server_reset_query: ""        # MUST be empty in transaction mode (the default DISCARD ALL is session-mode only)
+      server_reset_query_always: "0"
+      ignore_startup_parameters: "extra_float_digits,options,search_path"
+      max_prepared_statements: "0"  # the app does not use server-side prepared statements
+      query_wait_timeout: "10"      # fail fast instead of queueing behind an exhausted pool
+  template:
+    spec:
+      containers: []
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: {cnpg.io/poolerName: rag-pg-pooler-rw}

@@ -98,6 +98,7 @@ tests/                pytest suite (+ tests/live gated on keys)
 [01 Overview](DOCS/01_SYSTEM_OVERVIEW.md) · [02 Ingestion](DOCS/02_INGESTION_ENGINE.md) · [03 Nodes](DOCS/03_NODE_INTELLIGENCE.md) ·
 [04 Observability](DOCS/04_TRACING_AND_OBSERVABILITY.md) · [05 Environment](DOCS/05_ENVIRONMENT_VARIABLES.md) · [06 Gotchas](DOCS/06_KNOWN_GOTCHAS.md) ·
 [07 FlashRank](DOCS/07_FLASHRANK_RERANKING.md) · [08 Guardrails](DOCS/08_GUARDRAILS.md) · [09 LLM Gateway](DOCS/09_LLM_GATEWAY.md) ·
-[10 Evals](DOCS/10_EVALS.md) · [11 Evals pipeline](DOCS/11_EVALS_PIPELINE.md) · [12 Capacity](DOCS/12_CAPACITY.md) · [Architecture](ARCHITECTURE.md).
+[10 Evals](DOCS/10_EVALS.md) · [11 Evals pipeline](DOCS/11_EVALS_PIPELINE.md) · [12 Capacity](DOCS/12_CAPACITY.md) ·
+[13 Retrieval eval](DOCS/13_RETRIEVAL_EVAL.md) · [14 SLOs and runbooks](DOCS/14_SLOS_AND_RUNBOOKS.md) · [Architecture](ARCHITECTURE.md).
 Docs 01-07 and 12 describe the current code. 08-11 open with a "current implementation" note; the long tutorial text below it is background material (guardrail/gateway/eval concepts) and
 may mention prototype details (e.g. `ChatGroq`, `MemorySaver`) that no longer apply.
