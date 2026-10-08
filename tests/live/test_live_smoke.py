@@ -7,6 +7,7 @@ Run:  pytest tests/live -m live -s      (needs Postgres/Redis/Qdrant; scripts/ve
 Writes machine-readable results to $LIVE_REPORT_JSON (default live_results.json); scripts/make_live_report.py turns it into live_report.md.
 Never prints keys.
 """
+import asyncio
 import json
 import os
 import pathlib
@@ -25,7 +26,12 @@ pytestmark = [
 ]
 
 REPORT = pathlib.Path(os.environ.get("LIVE_REPORT_JSON", "live_results.json"))
-LLM_BUDGET, EMBED_BUDGET, GUARD_BUDGET = 150, 500, 150  # chat completions / embeddings / NeMo guard-model calls
+LLM_BUDGET, EMBED_BUDGET, GUARD_BUDGET = 190, 500, 190  # chat completions / embeddings / NeMo guard-model calls (headroom for the 503 retries below)
+# The free Groq tier throttles by tokens-per-minute, so a single /query can legitimately come back 503 (fail-closed
+# guardrail or upstream) mid-run. Retry it a bounded number of times instead of failing the whole 90-second run, and
+# report how often it happened - a run that needed many retries is a finding, not a pass.
+# 3 retries x ~10 s Retry-After spans a full tokens-per-minute window, which is what the free tier throttles on
+RETRIES_503_PER_ASK, RETRIES_503_PER_RUN, RETRY_WAIT_CAP_S = 3, 12, 20
 OFF_TOPIC = ["What is the capital of France?", "Write me a poem about autumn.", "Who won the football match yesterday?",
              "Give me a recipe for lasagna.", "What is 17 times 23?", "Tell me a joke.", "Recommend a movie.",
              "What's the weather in Paris?", "Explain the French revolution.", "How do I train for a marathon?"]
@@ -70,8 +76,12 @@ class Stages:
 
 
 class Counter:
+    """Counts calls against the hard budget and keeps the reason of every failed call: the API turns upstream
+    failures into a generic 503 body, so without this a rate-limited run is indistinguishable from a broken one."""
+
     def __init__(self, inner, kind):
         self.inner, self.kind, self.n = inner, kind, 0
+        self.errors: list[str] = []
         for attr in ("model", "dim"):
             if hasattr(inner, attr):
                 setattr(self, attr, getattr(inner, attr))
@@ -81,17 +91,26 @@ class Counter:
         limit = LLM_BUDGET if self.kind == "llm" else EMBED_BUDGET
         assert self.n <= limit, f"{self.kind} budget exceeded ({self.n}>{limit})"
 
+    async def _call(self, fn, *a, **kw):
+        try:
+            return await fn(*a, **kw)
+        except AssertionError:
+            raise
+        except Exception as e:
+            self.errors.append(f"{self.kind}.{fn.__name__}: {type(e).__name__}: {e}"[:300])
+            raise
+
     async def complete(self, *a, **kw):
         self._tick()
-        return await self.inner.complete(*a, **kw)
+        return await self._call(self.inner.complete, *a, **kw)
 
     async def embed_query(self, t):
         self._tick()
-        return await self.inner.embed_query(t)
+        return await self._call(self.inner.embed_query, t)
 
     async def embed_texts(self, ts):
         self._tick(len(ts))
-        return await self.inner.embed_texts(ts)
+        return await self._call(self.inner.embed_texts, ts)
 
 
 def overlap(answer: str, contexts: list[str]) -> float:
@@ -130,6 +149,7 @@ async def test_live_end_to_end():
     async with LifespanManager(app) as mgr:
         svc = app.state.svc
         guard_calls = {"n": 0}
+        guard_errors: list[str] = []  # the rails fail closed and the API only returns a generic 503: keep the real reason
 
         def budgeted(obj, name):  # every rail check is one Groq call: count it against its own hard budget
             orig = getattr(obj, name)
@@ -137,7 +157,13 @@ async def test_live_end_to_end():
             async def w(*a, **kw):
                 guard_calls["n"] += 1
                 assert guard_calls["n"] <= GUARD_BUDGET, f"guard-call budget exceeded ({guard_calls['n']}>{GUARD_BUDGET})"
-                return await orig(*a, **kw)
+                try:
+                    return await orig(*a, **kw)
+                except AssertionError:
+                    raise
+                except Exception as e:
+                    guard_errors.append(f"{name}: {type(e).__name__}: {e}"[:300])
+                    raise
 
             setattr(obj, name, w)
 
@@ -153,10 +179,24 @@ async def test_live_end_to_end():
             await ingest(svc.vectors, svc.embedder, svc.sparse, s, tenant, "DATA/true_data", "true")
         h = {"X-API-Key": key}
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=mgr.app), base_url="http://t", timeout=120) as c:
+            retried = {"n": 0}
+
             async def ask(q, **kw):
                 t0 = time.perf_counter()
-                r = await c.post("/query", headers=h, json={"q": q, "session_id": uuid.uuid4().hex[:10], **kw})
-                assert r.status_code == 200, r.text[:200]
+                for attempt in range(RETRIES_503_PER_ASK + 1):
+                    r = await c.post("/query", headers=h, json={"q": q, "session_id": uuid.uuid4().hex[:10], **kw})
+                    if r.status_code != 503 or attempt == RETRIES_503_PER_ASK or retried["n"] >= RETRIES_503_PER_RUN:
+                        break
+                    retried["n"] += 1
+                    try:  # the API sets Retry-After on every 503; cap it so one slow hint cannot stall the run
+                        wait = min(float(r.headers.get("retry-after", 2)), RETRY_WAIT_CAP_S)
+                    except ValueError:
+                        wait = 2.0
+                    why = (guard_errors + llm.errors + emb.errors)[-1:] or [r.text[:120]]
+                    print(f"  503 on {q[:40]!r} (retry {retried['n']}/{RETRIES_503_PER_RUN} in {wait:.0f}s): {why[0]}")
+                    await asyncio.sleep(wait)
+                assert r.status_code == 200, (f"{r.text[:200]} | retries_used={retried['n']} | guard_errors={guard_errors[-2:]}"
+                                              f" | llm_errors={llm.errors[-2:]} | embed_errors={emb.errors[-2:]}")
                 j = r.json()
                 j["_ms"] = round((time.perf_counter() - t0) * 1000)
                 return j
@@ -184,6 +224,9 @@ async def test_live_end_to_end():
         "groundedness_spot_checks": spot,
         "latency_stages": st.summary(),
         "latency_request_ms": {"p50": totals[len(totals) // 2], "p95": totals[max(0, int(0.95 * len(totals)) - 1)], "max": totals[-1]},
+        "transient_503": {"retries_used": retried["n"], "retry_cap": RETRIES_503_PER_RUN,
+                          "failed_calls": {"guard": len(guard_errors), "llm": len(llm.errors), "embedding": len(emb.errors)},
+                          "reasons": (guard_errors + llm.errors + emb.errors)[:5]},
         "budget": {"guard_calls_used": guard_calls["n"], "guard_budget": GUARD_BUDGET, "llm_calls_used_by_test": llm.n, "llm_budget": LLM_BUDGET, "embeddings_used_by_test": emb.n, "embedding_budget": EMBED_BUDGET},
     }
     record("end_to_end", result)

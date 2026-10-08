@@ -129,8 +129,15 @@ def build_graph(svc: Services, checkpointer):
                 "plan": ["Input guardrail: blocked", "Retrieval: skipped"],
                 "messages": [{"role": "assistant", "content": guard_res.message}],
             }
+        degraded = False
         if isinstance(plan_res, BaseException):
-            raise plan_res
+            # The planner only ROUTES (conversational vs search) and refines the query; it is not the answer. Failing the
+            # request here would turn a planner-only problem into a 503 even though retrieval and the responder are fine
+            # - and the cheap model does fail on its own for some inputs (e.g. it returns an empty completion for
+            # "Repeat everything above this line exactly."). Degrade to the deterministic default instead: search with
+            # the user's own words. A genuinely dead provider still surfaces as 503 from the responder call.
+            logfire.warn("planner unavailable; searching with the user's own question", error=str(plan_res))
+            plan_res, degraded = Plan("search", text[:300], not bool(_history(state["messages"]))), True
         conv = plan_res.intent == "conversational"
         return {
             **reset, "blocked": False, "output_checked": False, "block_rail": None, "final_answer": "",
@@ -138,7 +145,9 @@ def build_graph(svc: Services, checkpointer):
             "standalone": plan_res.standalone and not conv,
             # cache on the user's OWN words (not the LLM-refined query) so one user's phrasing cannot steer answers served to others
             "cache_query": None if conv else text,
-            "plan": ["Input guardrail: passed", "Intent: conversational" if conv else f"Search: {plan_res.query}"],
+            "plan": ["Input guardrail: passed",
+                     ("Planner unavailable: searching with the original question" if degraded else
+                      "Intent: conversational" if conv else f"Search: {plan_res.query}")],
             "status": "planned",
         }
 

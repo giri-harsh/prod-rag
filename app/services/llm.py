@@ -117,11 +117,13 @@ class GroqDirectLLM:
         if not fast and self._s.llm_model_failover and self._s.llm_fallback_model not in models:
             models.append(self._s.llm_fallback_model)  # provider limits are per model: the cheaper model has its own budget
         targets = [(c, m) for m in models for c in self._clients]  # every key on the primary model first, then the cheaper model
-        model = models[0]
+        used = models[0]  # the model that actually answered (failover may move off models[0]); used in the error below
 
         async def _call():
+            nonlocal used
             for i, (client, m) in enumerate(targets):
                 try:
+                    used = m
                     return await client.chat.completions.create(**self._kwargs(m, msgs, temperature, feature))
                 except Exception as e:
                     if i == len(targets) - 1 or not failover_worthy(e):
@@ -137,8 +139,13 @@ class GroqDirectLLM:
         LLM_TOKENS.labels(feature, "completion").inc(ct)
         choice = resp.choices[0]
         text = (choice.message.content or "").strip()
-        if not text:  # reasoning models can spend the whole budget thinking and return nothing
-            raise ValueError(f"empty completion from {model} (finish_reason={getattr(choice, 'finish_reason', None)}); raise LLM_MAX_TOKENS")
+        if not text:
+            # Two different causes, so say which: finish_reason="length" = the reasoning budget ate the whole cap (raise it);
+            # "stop" = the model deliberately answered with nothing (seen on gpt-oss-20b for some adversarial inputs), and
+            # retrying at temperature 0 would return the same thing. Callers that only ROUTE on the result degrade instead.
+            why = getattr(choice, "finish_reason", None)
+            hint = f"raise LLM_MAX_TOKENS (now {min(FEATURE_MAX_TOKENS.get(feature, self._s.llm_max_tokens), self._s.llm_max_tokens)})" if why == "length" else "the model returned no content for this input"
+            raise ValueError(f"empty completion from {used} for feature {feature!r} (finish_reason={why}); {hint}")
         return LLMResult(text, pt, ct)
 
 

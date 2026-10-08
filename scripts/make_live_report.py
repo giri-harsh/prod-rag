@@ -35,6 +35,11 @@ L += ["", "## Latency", "", f"Per request (all {sum(e[k]['n'] for k in ('true_da
       "| stage | calls | mean ms | p95 ms |", "|---|---|---|---|"]
 for k, v in sorted(e["latency_stages"].items()):
     L.append(f"| {k} | {v['n']} | {v['mean_ms']} | {v['p95_ms']} |")
+t = e.get("transient_503")
+if t:
+    L += ["", "## Transient 503s", "",
+          f"- /query calls retried after a 503 (fail-closed guardrail or upstream): **{t['retries_used']}** of at most {t['retry_cap']} allowed per run.",
+          f"- failed provider calls underneath those 503s: {t.get('failed_calls')}" + (f"; first reasons: {t['reasons']}" if t.get("reasons") else ".")]
 b = e["budget"]
 L += ["", "## Budget", "", f"- chat completions by the test: {b['llm_calls_used_by_test']} / {b['llm_budget']}; guard-model calls: {b.get('guard_calls_used', '?')} / {b.get('guard_budget', '?')}; embeddings by the test: {b['embeddings_used_by_test']} / {b['embedding_budget']}"
       + (" (sample data was ingested beforehand by the verify script)." if e.get("tenant_preingested") else ".")]

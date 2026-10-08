@@ -21,7 +21,8 @@ class StatusErr(Exception):
 
 
 def make_fake_groq(monkeypatch, scripts):
-    """scripts: {key: [outcome, ...]} where an outcome is an Exception or a text reply. Records every create() call."""
+    """scripts: {key: [outcome, ...]} where an outcome is an Exception, a text reply, or (text, finish_reason).
+    Records every create() call."""
     calls = []
 
     class Msg:
@@ -29,12 +30,12 @@ def make_fake_groq(monkeypatch, scripts):
             self.content = c
 
     class Choice:
-        def __init__(self, c):
-            self.message, self.finish_reason = Msg(c), "stop" if c else "length"
+        def __init__(self, c, finish=None):
+            self.message, self.finish_reason = Msg(c), finish or ("stop" if c else "length")
 
     class Resp:
-        def __init__(self, c):
-            self.choices = [Choice(c)]
+        def __init__(self, c, finish=None):
+            self.choices = [Choice(c, finish)]
             self.usage = types.SimpleNamespace(prompt_tokens=5, completion_tokens=2)
 
     class Completions:
@@ -47,7 +48,7 @@ def make_fake_groq(monkeypatch, scripts):
             o = outs.pop(0) if len(outs) > 1 else outs[0]
             if isinstance(o, Exception):
                 raise o
-            return Resp(o)
+            return Resp(*o) if isinstance(o, tuple) else Resp(o)
 
     class AsyncGroq:
         def __init__(self, api_key, timeout, max_retries):
@@ -126,8 +127,19 @@ async def test_single_key_still_works_and_errors_propagate(monkeypatch):
 
 async def test_empty_reasoning_only_completion_is_an_error(monkeypatch):
     make_fake_groq(monkeypatch, {"PRIMARY": [""], "FALLBACK": [""]})
-    with pytest.raises(ValueError, match="empty completion"):
+    with pytest.raises(ValueError, match=r"empty completion.*finish_reason=length.*raise LLM_MAX_TOKENS"):
         await GroqDirectLLM(settings(), Breakers(5, 30)).complete("s", "u", feature="t")
+
+
+async def test_empty_completion_names_the_model_that_answered_and_separates_stop_from_length(monkeypatch):
+    """finish_reason="stop" with no content = the model chose to say nothing (not a token-cap problem), and the model
+    named must be the one that actually ran - after model failover that is no longer llm_primary_model."""
+    make_fake_groq(monkeypatch, {"PRIMARY": [("", "stop")], "FALLBACK": [("", "stop")]})
+    with pytest.raises(ValueError) as ei:
+        await GroqDirectLLM(settings(), Breakers(5, 30)).complete("s", "u", feature="planner", fast=True)
+    msg = str(ei.value)
+    assert "openai/gpt-oss-20b" in msg and "'planner'" in msg  # the cheap model ran because fast=True
+    assert "finish_reason=stop" in msg and "LLM_MAX_TOKENS" not in msg and "no content for this input" in msg
 
 
 def test_make_llm_switches_on_use_gateway(monkeypatch):
