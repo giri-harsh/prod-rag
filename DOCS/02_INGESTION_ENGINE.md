@@ -1,62 +1,44 @@
-> **Current implementation:** `app/ingestion/pipeline.py::ingest()` (shared by the CLI and the arq worker).
-> Point ids are `uuid5(tenant, source, chunk_index, content_hash)` so re-ingestion is idempotent and unchanged chunks are not re-embedded;
-> changed files have stale points removed. Upserts are batched (`INGEST_BATCH_SIZE`). Every point carries `tenant_id`
-> (keyword payload index, `is_tenant=true`), `source_type` and `source`. `--rebuild` builds `<alias>_v<N+1>`, copies other tenants'
-> points, then atomically swaps the alias (aborting without a swap if any file failed). DOCX/PPTX use python-docx/python-pptx.
-> The legacy `--wipe` flag is gone. Per-file failures are collected and the CLI exits non-zero.
+# Ingestion engine
 
-# 📥 Ingestion Engine: Data to Knowledge
+`app/ingestion/pipeline.py::ingest()` is the single implementation, used by the CLI (`python -m app.ingestion.cli`) and the arq worker (`/ingest` endpoint -> `ingest_job`).
 
-The Ingestion Engine is a modular, high-performance pipeline designed to convert raw enterprise data into a searchable vector format.
-
-## 🔄 The Pipeline Flow
 ```mermaid
 graph LR
-    Raw[Raw Data] --> Parser{Smart Parser}
-    Parser -->|PDF| Local[pypdf / pdfplumber]
-    Parser -->|HTML| BS4[BeautifulSoup]
-    Parser -->|TXT| Simple[Text Loader]
-    Parser -->|DOCX/PPTX| Office[python-docx / python-pptx]
-    Local --> Chunker[Semantic Chunker]
-    BS4 --> Chunker
-    Simple --> Chunker
-    Office --> Chunker
-    Chunker --> Embedder[Gemini gemini-embedding-2-preview]
-    Embedder --> VectorDB[(Qdrant Cloud)]
+  F[files] --> P{parser}
+  P -->|pdf| PDF[pypdf, pdfplumber fallback, per page]
+  P -->|html| H[BeautifulSoup, headings kept as markdown]
+  P -->|txt| T[text]
+  P -->|docx, pptx| O[python-docx / python-pptx]
+  PDF --> C[heading-aware chunker]
+  H --> C
+  T --> C
+  O --> C
+  C --> E[Gemini dense + fastembed BM25 sparse]
+  E --> Q[(Qdrant: named vectors dense+sparse)]
 ```
 
----
+## Parsing
+All local; no OCR service. Scanned/image-only PDFs yield no text and are reported as failed files. `#` lines inside code samples (docx/pptx/html) are escaped so they are not mistaken for headings.
 
-## 🛠️ Technical Specifications
+## Chunking (`app/ingestion/chunking/splitter.py`)
+Recursive: headings -> paragraphs -> lines -> sentences -> words. Sizes are *estimated tokens* (characters / 4, no tokenizer dependency):
+`CHUNK_TARGET_TOKENS`=900, `CHUNK_OVERLAP_RATIO`=0.15 (overlap starts on a word boundary), `CHUNK_MIN_TOKENS`=200 (a new heading only starts a new chunk once the current one is at least this big).
+Markdown-style headings build `heading_path`; the "1.2 Title" numbered-heading heuristic is used only for documents with no markdown headings (e.g. PDFs). Each chunk is embedded as `heading_path + text`.
 
-### 1. Smart Parsing (Local, No External OCR)
-All document parsing runs entirely on-device — no external OCR service or cloud API is required:
-*   **PDFs**: Parsed locally via **pypdf** (primary) and **pdfplumber** (fallback for complex layouts). Handles multi-page PDFs without any page-count limits.
-*   **HTML**: Processed via **BeautifulSoup**. It intelligently strips out `<script>`, `<style>`, and metadata tags to extract only the readable content.
-*   **Office Docs**: Supports `.docx` via `python-docx` and `.pptx` via `python-pptx`.
-*   **Plain Text**: Loaded directly with a simple text reader.
+## What is stored per point
+Vectors `dense` (cosine, `EMBEDDING_DIM`=768 of `gemini-embedding-2`, normalised) and `sparse` (BM25, IDF applied by Qdrant). Payload: `tenant_id`, `source`, `source_type`, `page`, `heading_path`, `chunk_index`, `content_hash`, `file_hash`, `index_version`, `text`.
+Payload indexes: `tenant_id` (keyword, `is_tenant=true`), `source_type`, `source`, `file_hash`. Collection metadata records `embedding_model`, `embedding_dim` and `schema` (`hybrid-v1`); startup refuses to run against an index that disagrees.
 
-### 2. Semantic Chunking
-*   **Chunk Size**: `1500` characters.
-*   **Overlap**: Natural overlap (we split by paragraph breaks `\n\n` rather than arbitrary character counts).
-*   **Logic**: The system uses a semantic-ish, paragraph-aware splitter. It attempts to keep paragraphs together to maintain context, ensuring that no chunk is cut off mid-sentence whenever possible. This prevents the LLM from getting "hallucinated" fragments.
+## Idempotency and updates
+Point id = `uuid5(tenant, source, chunk_index, sha256(chunk))`. Re-ingesting unchanged files re-embeds nothing (existing ids are looked up first). When a file changed, points of the same `(tenant, source, source_type)` with a different `file_hash` are deleted after the upsert.
+Upserts are batched (`INGEST_BATCH_SIZE`=128). Embeddings go through the Redis embedding cache. Per-file failures are collected; the CLI exits non-zero if any file failed. Aliases/collections: the alias `QDRANT_COLLECTION` points at `<alias>_v<N>`.
 
-### 3. Vectorization & Storage
-*   **Embedding Model**: `gemini-embedding-2-preview` (Google Gemini). A state-of-the-art embedding model specifically tuned for retrieval tasks.
-*   **Vector Dimensions**: `3072` dimensions.
-*   **Vector Database**: **Qdrant**. We use a Cloud-hosted Qdrant instance for low-latency retrieval.
-*   **Distance Metric**: **Cosine Similarity** (`models.Distance.COSINE`) is used to measure how closely a user query matches our document chunks.
-
----
-
-## 🌍 Universal Ingestion Command
-The engine is "Universal," meaning it automatically detects folder structures and maps them to metadata (e.g., "True" vs "Noisy" data).
-
-```powershell
-# Command to run the full ingestion
-python -m app.ingestion.processor DATA --wipe
+## Commands
+```bash
+python -m app.ingestion.cli DATA/true_data --tenant acme --source-type true     # incremental, idempotent
+python -m app.ingestion.cli DATA/true_data --tenant acme --rebuild              # blue/green: new collection + atomic alias swap (exit 2 if another rebuild is running)
 ```
-
+The legacy `--wipe` flag no longer exists.
 
 ## Rebuild coordination (close-out phase)
 * **One rebuild per alias**: a Redis `SET NX EX` lock (`rebuild:<alias>:lock`) with a heartbeat; if Redis is unreachable a Postgres session advisory lock is used (mutual exclusion only). A second rebuild fails fast with `RebuildInProgress` (CLI exit code 2; `POST /ingest` with `rebuild=true` returns **409**).

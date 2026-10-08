@@ -1,57 +1,37 @@
-> **Current state (supersedes older text below).** Multi-tenant API (`X-API-Key`), tenant-derived thread ids, Postgres checkpoints,
-> hybrid dense+BM25 retrieval with server-side RRF then FlashRank, a cyclic grade/rewrite loop, fail-closed NeMo input/output rails,
-> Redis rate limits + embedding/planner caches + a Qdrant semantic answer cache, arq ingestion with blue/green indexes.
-> See the README request-flow diagram. There is no response streaming: the output guard needs the full draft.
+# System overview
 
-# 🤖 Enterprise Agentic RAG: System Overview
+A multi-tenant RAG API. One FastAPI service (gunicorn/uvicorn workers) in front of Postgres, Redis and Qdrant, calling Groq (via Portkey) for generation and Gemini for embeddings.
+What was *measured* is stated in [12 Capacity](12_CAPACITY.md); what was never run (Docker image, GitHub CI, live Groq/Portkey/Gemini) is listed in the README's "Verification status" and covered by `scripts/verify_live` and `scripts/verify_docker`.
 
-A production-grade, state-of-the-art RAG system built for speed, scalability, and deep observability. This platform leverages **LangGraph** to handle complex reasoning and a fully local, cloud-agnostic stack for document intelligence.
-
----
-
-## 🌟 Vision
-Most RAG systems fail because they treat every query the same. Our **Agentic RAG** distinguishes between:
-1.  **Conversational Queries**: "Hi", "Who are you?", "What did I just say?"
-2.  **Technical Queries**: "How do I configure Intel SRIOV on Kubernetes?"
-
-By using a **Planner-Retriever-Responder** architecture, we ensure that technical answers are always grounded in "True Data" while conversational interactions remain fluid and fast.
-
----
-
-## 🏗️ High-Level Flow
+## What a request does
 ```mermaid
-sequenceDiagram
-    participant User
-    participant UI as Streamlit UI
-    participant Agent as Agent Brain (FastAPI)
-    participant Data as Knowledge Base (Qdrant)
-
-    User->>UI: Asks Question
-    UI->>Agent: Request with thread_id
-    Agent->>Agent: Planner decides intent
-    alt Technical
-        Agent->>Data: Vector Search
-        Data-->>Agent: Raw Chunks
-        Agent->>Agent: FlashRank Local Reranking
-    else Conversational
-        Agent->>Agent: Recall Memory
-    end
-    Agent->>User: Synthesized Answer + Sources
+graph TD
+  C[Client + X-API-Key] --> A[Auth -> tenant/user]
+  A --> R[Redis rate limit]
+  R --> G[gate_and_plan: input rail || planner]
+  G -->|blocked| X[refusal]
+  G -->|conversational| S[respond]
+  G -->|first-turn search| K{semantic cache}
+  K -->|hit| Z[answer]
+  K -->|miss| T
+  G -->|follow-up search| T[retrieve: dense+BM25 -> RRF -> rerank -> injection screen]
+  T -->|no hits| N[fixed no-context answer]
+  T --> D{grade: rerank score}
+  D -->|good| S
+  D -->|poor, iterations left| W[rewrite_query] --> T
+  D -->|poor, exhausted| N
+  S --> O[output guard] --> P[(Postgres checkpoint)]
 ```
 
----
+## Design decisions worth knowing
+* **Tenant isolation is structural**: the thread id is derived server-side (`tenant:user:session`), every Qdrant query carries a `tenant_id` filter, caches are tenant-scoped or keyed by tenant.
+* **Fail closed**: if the NeMo rails are not initialised or error, `/query` returns 503; the answer is only returned if the output guard ran.
+* **No response streaming**: the output guard needs the complete draft before anything is sent to the client.
+* **Retrieved text is untrusted data**: regex screen + explicit `<retrieved_context>` delimiters + a system rule.
+* **Stateless workers**: all state is in Postgres (keys, tenants, conversation checkpoints), Redis (limits, caches, jobs, locks) and Qdrant (vectors, semantic cache).
 
-## 📂 Project Organization
-*   **`app/`**: The core Python package containing the Agent, Pipelines, and Services.
-*   **`ui/`**: A premium Streamlit interface designed for source transparency.
-*   **`DATA/`**: The ground-truth documentation used for ingestion.
-*   **`DOCS/`**: This documentation suite.
-*   **`commands.md`**: The master execution guide for developers.
+## Code map
+`app/api.py` (routes, auth, errors) - `app/container.py` (wiring; tests inject fakes here) - `app/agents/graph.py` (the pipeline) - `app/guardrails/` - `app/services/` (llm, embedding, vectorstore, reranker, sparse, caches, rebuild) -
+`app/auth/` - `app/db/` - `app/ingestion/` - `app/observability/` - `app/worker.py` - `deploy/k8s/base` - `loadtest/` - `scripts/` - `tests/`.
 
----
-
-## 🚀 Quick Navigation
-1.  **Ingestion**: [02_INGESTION_ENGINE.md](02_INGESTION_ENGINE.md)
-2.  **Intelligence**: [03_NODE_INTELLIGENCE.md](03_NODE_INTELLIGENCE.md)
-3.  **Observability**: [04_TRACING_AND_OBSERVABILITY.md](04_TRACING_AND_OBSERVABILITY.md)
-4.  **Environment Variables**: [05_ENVIRONMENT_VARIABLES.md](05_ENVIRONMENT_VARIABLES.md)
+Next: [02 Ingestion](02_INGESTION_ENGINE.md) - [03 Nodes](03_NODE_INTELLIGENCE.md) - [04 Observability](04_TRACING_AND_OBSERVABILITY.md) - [05 Environment](05_ENVIRONMENT_VARIABLES.md).
