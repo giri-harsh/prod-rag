@@ -54,7 +54,7 @@ def parse_plan(raw: str, has_history: bool, fallback_query: str) -> Plan:
             d = json.loads(m.group(0))
             intent = "conversational" if str(d.get("intent", "")).lower().startswith("conv") else "search"
             q = str(d.get("query") or fallback_query)[:300]
-            return Plan(intent, q, bool(d.get("standalone", False)) or not has_history)
+            return Plan(intent, q, not has_history)  # standalone = first turn only; the LLM's own flag is never trusted
         except (ValueError, TypeError):
             pass
     if raw.upper().strip('"') == "CONVERSATIONAL":
@@ -130,7 +130,9 @@ def build_graph(svc: Services, checkpointer):
         return {
             **reset, "blocked": False, "output_checked": False, "block_rail": None, "final_answer": "",
             "user_text": text, "search_query": None if conv else plan_res.query,
-            "standalone": plan_res.standalone and not conv, "cache_query": None if conv else plan_res.query,
+            "standalone": plan_res.standalone and not conv,
+            # cache on the user's OWN words (not the LLM-refined query) so one user's phrasing cannot steer answers served to others
+            "cache_query": None if conv else text,
             "plan": ["Input guardrail: passed", "Intent: conversational" if conv else f"Search: {plan_res.query}"],
             "status": "planned",
         }

@@ -22,6 +22,58 @@ from app.observability.metrics import UPSTREAM_ERRORS
 from app.observability.redact import install_logging_filter, langsmith_client, logfire_scrubbing
 from app.ratelimit import Limited
 
+
+class BodyLimitMiddleware:
+    """Reject request bodies over `limit` bytes with 413 - counts streamed/chunked bodies too, not just Content-Length."""
+
+    def __init__(self, app, limit: int):
+        self.app, self.limit = app, limit
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        for k, v in scope["headers"]:
+            if k == b"content-length":
+                try:
+                    declared = int(v)
+                except ValueError:
+                    declared = -1
+                if declared < 0 or declared > self.limit:
+                    return await self._reject(send)
+        seen, too_big = 0, False
+
+        async def limited_receive():
+            nonlocal seen, too_big
+            msg = await receive()
+            if msg["type"] == "http.request":
+                seen += len(msg.get("body", b""))
+                if seen > self.limit:
+                    too_big = True
+                    return {"type": "http.request", "body": b"", "more_body": False}
+            return msg
+
+        started = False
+
+        async def guarded_send(msg):
+            nonlocal started
+            if too_big and not started:
+                started = True
+                return await self._reject(send)
+            if too_big:
+                return None
+            started = started or msg["type"] == "http.response.start"
+            return await send(msg)
+
+        await self.app(scope, limited_receive, guarded_send)
+
+    @staticmethod
+    async def _reject(send):
+        body = b'{"error":"payload too large"}'
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+
 SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_BODY_BYTES = 64 * 1024
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
@@ -41,6 +93,38 @@ class IngestRequest(BaseModel):
     path: str  # relative to INGEST_ROOT
     source_type: str | None = None
     rebuild: bool = False
+
+
+class SessionBusy(AppError):
+    status_code = 409
+    public_message = "Another request for this session is still running; retry shortly"
+    retry_after = 1
+
+
+async def acquire_thread_lock(svc, thread_id: str):
+    """Serialise requests per conversation: with durability="exit" a concurrent second request would otherwise
+    overwrite the first one's history (last writer wins). Redis outage => proceed unlocked (logged)."""
+    key, token = f"lock:thread:{thread_id}", uuid.uuid4().hex
+    try:
+        ok = await svc.redis.set(key, token, nx=True, ex=int(svc.settings.llm_timeout_s * 4))
+    except Exception as e:
+        logfire.warn("thread lock unavailable; proceeding without it", error=str(e))
+        return None
+    if not ok:
+        raise SessionBusy(thread_id)
+    return key, token
+
+
+async def release_thread_lock(svc, lock) -> None:
+    if not lock:
+        return
+    key, token = lock
+    try:
+        cur = await svc.redis.get(key)
+        if (cur.decode() if isinstance(cur, bytes) else cur) == token:
+            await svc.redis.delete(key)
+    except Exception as e:
+        logfire.warn("thread lock release failed (expires on its own)", error=str(e))
 
 
 def create_app(settings: Settings | None = None, overrides: dict | None = None) -> FastAPI:
@@ -84,13 +168,10 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
             rid = uuid.uuid4().hex
         tok = request_id_var.set(rid)
         try:
-            if int(request.headers.get("content-length") or 0) > MAX_BODY_BYTES:
-                resp: Response = JSONResponse({"error": "payload too large", "request_id": rid}, 413)
-            else:
-                with logfire.set_baggage(request_id=rid), logfire.span(
-                    "{method} {path}", method=request.method, path=request.url.path, request_id=rid
-                ):
-                    resp = await call_next(request)
+            with logfire.set_baggage(request_id=rid), logfire.span(
+                "{method} {path}", method=request.method, path=request.url.path, request_id=rid
+            ):
+                resp: Response = await call_next(request)
         finally:
             request_id_var.reset(tok)
         resp.headers["X-Request-ID"] = rid
@@ -196,6 +277,13 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         if body.include_contexts and not p.has_scope("eval"):
             raise HTTPException(403, "include_contexts requires the 'eval' scope")
         thread_id = f"{p.tenant_id}:{p.user_id}:{body.session_id}"
+        lock = await acquire_thread_lock(svc, thread_id)  # 409 if another request is mid-flight on this session
+        try:
+            return await _run_query(svc, p, body, q, thread_id, ls_client)
+        finally:
+            await release_thread_lock(svc, lock)
+
+    async def _run_query(svc, p, body, q, thread_id, ls_client):
         async with svc.pool.connection() as conn:
             await conn.execute(
                 "INSERT INTO thread_activity (thread_id, tenant_id) VALUES (%s,%s) "
@@ -231,6 +319,8 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
     @app.post("/ingest", status_code=202)
     async def ingest(body: IngestRequest, request: Request, p: Principal = Depends(admin)):
         svc = svc_of(request)
+        if body.tenant_id != p.tenant_id and not p.has_scope("platform"):
+            raise HTTPException(403, "an admin key may only ingest into its own tenant (platform scope required otherwise)")
         root = Path(svc.settings.ingest_root).resolve()
         target = (root / body.path).resolve()
         if root != target and root not in target.parents:
@@ -246,6 +336,7 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
     async def graph(request: Request, p: Principal = Depends(admin)):
         return svc_of(request).graph.get_graph().draw_mermaid()
 
+    app.add_middleware(BodyLimitMiddleware, limit=MAX_BODY_BYTES)  # added last = outermost: runs before anything reads the body
     return app
 
 
