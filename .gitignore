@@ -95,3 +95,6 @@ live_pytest.log
 docker_report.md
 docker_*.log
 docker_query.json
+
+# headless eval intermediate (live answers, regenerated on every run)
+evals/.phase1.json
