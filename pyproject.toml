@@ -38,7 +38,9 @@ dependencies = [
 
 [project.optional-dependencies]
 ui = ["streamlit", "requests"]
-eval = ["ragas", "pandas", "openai"]
+# ragas is pinned: 0.4.3 is the version DOCS/10 documents the API rules for, and evals/metrics.py carries a shim
+# for its langchain-community import. sentence-transformers is what HuggingFaceEmbeddings(use_api=False) needs.
+eval = ["ragas==0.4.3", "pandas", "openai", "sentence-transformers"]
 
 [dependency-groups]
 dev = ["pip-audit", "bandit", "pytest", "pytest-asyncio", "fakeredis", "httpx", "ruff", "asgi-lifespan", "pgserver"]

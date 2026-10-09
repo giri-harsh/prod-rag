@@ -50,6 +50,8 @@ def pick_judge_key() -> str:
 
 RESPONSE_TRUNCATE = 300  # same as evals/pipeline.py: the judge sees what the UI would show
 CONTEXTS_KEPT = 5
+EVAL_DOMAIN = ("Kubernetes (architecture, Jobs, CronJobs, autoscaling, work queues), container workloads and "
+               "Databricks job automation")  # the actual subject matter of DATA/true_data
 
 
 class JudgeBudget:
@@ -78,7 +80,13 @@ def install_budget(budget: JudgeBudget):
 
 
 async def phase1(golden: dict, delay_s: float) -> dict:
-    """Ask the real pipeline every golden question, in-process."""
+    """Ask the real pipeline every golden question, in-process.
+
+    The corpus is ingested FOR THIS TENANT first. Qdrant payloads are tenant-scoped, so a fresh eval tenant
+    retrieves nothing and the pipeline answers "not enough information" for all 15 questions - which the judge
+    would happily score as perfectly faithful. Pass EVAL_TENANT + EVAL_API_KEY to reuse an already-ingested
+    tenant instead (then set EVAL_SKIP_INGEST=1).
+    """
     import copy
 
     import httpx
@@ -88,16 +96,30 @@ async def phase1(golden: dict, delay_s: float) -> dict:
     from app.auth import keys
     from app.config import load_settings
     from app.db.migrate import migrate
+    from app.ingestion.pipeline import ingest
 
     s = load_settings()
     migrate(s.direct_database_url or s.database_url)
     tenant = os.environ.get("EVAL_TENANT") or f"eval{uuid.uuid4().hex[:6]}"
     key = os.environ.get("EVAL_API_KEY") or keys.create_key(
         s.database_url, tenant, "evaluator", rate_per_min=1000, scopes=("eval",), redis_url=s.redis_url)
+    # Pin the tenant's topic policy to the corpus instead of inheriting ASSISTANT_DOMAIN: the input rail blocks
+    # off-domain questions, so a domain that does not mention Databricks refuses 3 of the 15 golden questions and
+    # the baseline silently measures the rail instead of the responder.
+    keys.set_tenant_domain(s.direct_database_url or s.database_url, tenant, EVAL_DOMAIN)
     out = copy.deepcopy(golden)
     samples = out["rag_samples"]
     app = create_app(s)
-    async with LifespanManager(app) as mgr:
+    ingested = None
+    # asgi_lifespan defaults to a 5 s startup timeout, which this app blows past: startup builds the NeMo
+    # Guardrails engine, the Qdrant client and the Postgres pool. Shutdown drains the same.
+    async with LifespanManager(app, startup_timeout=180, shutdown_timeout=60) as mgr:
+        svc = app.state.svc
+        if not os.environ.get("EVAL_SKIP_INGEST"):
+            rep = await ingest(svc.vectors, svc.embedder, svc.sparse, s, tenant, "DATA/true_data", "true")
+            ingested = {"files_ok": rep.files_ok, "chunks_total": rep.chunks_total,
+                        "chunks_embedded": rep.chunks_embedded, "failed": [f"{p}: {why}" for p, why in rep.failed]}
+            print(f"  ingested for tenant: {ingested}")
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=mgr.app), base_url="http://eval", timeout=180) as c:
             for i, smp in enumerate(samples):
                 t0 = time.perf_counter()
@@ -114,15 +136,38 @@ async def phase1(golden: dict, delay_s: float) -> dict:
                     smp["actual_response"] = (d.get("answer") or "")[:RESPONSE_TRUNCATE]
                     smp["actual_contexts"] = (d.get("contexts") or [])[:CONTEXTS_KEPT]
                     smp["actual_tools_called"] = [detect_tool(d.get("thought_process") or [])]
+                    smp["_cache_hit"] = bool(d.get("cache_hit"))
+                    smp["_blocked"] = bool(d.get("blocked"))
                     print(f"  [{i + 1}/{len(samples)}] {round(1000 * (time.perf_counter() - t0))} ms, "
                           f"{len(smp['actual_contexts'])} contexts, tool={smp['actual_tools_called'][0]}, "
                           f"cache_hit={d.get('cache_hit')}")
                 if i < len(samples) - 1 and delay_s:
                     await asyncio.sleep(delay_s)
     out["_phase1"] = {"tenant": tenant, "mode": "gateway" if s.use_gateway else "direct-groq",
+                      "ingested": ingested,
+                      "with_contexts": sum(bool(x.get("actual_contexts")) for x in samples),
+                      "from_cache": sum(bool(x.get("_cache_hit")) for x in samples),
+                      "blocked": sum(bool(x.get("_blocked")) for x in samples),
                       "models": {"primary": s.llm_primary_model, "fallback": s.llm_fallback_model,
                                  "guard": s.guard_model, "embedding": f"{s.embedding_model}/{s.embedding_dim}"}}
     return out
+
+
+def gate_phase1(data: dict) -> str | None:
+    """Reason to refuse scoring, or None.
+
+    A run where retrieval returned nothing still produces fluent "I don't have enough information" answers, and
+    the judge scores those as perfectly faithful - a baseline that measures the judge, not the pipeline. Same for
+    answers replayed from the semantic cache. Both have already happened on this project; fail loudly instead.
+    """
+    p1 = data.get("_phase1") or {}
+    n = len(data["rag_samples"])
+    if (p1.get("from_cache") or 0) > 0:
+        return f"{p1['from_cache']}/{n} answers came from the semantic cache"
+    with_ctx = p1.get("with_contexts")
+    if with_ctx is not None and with_ctx < n - 2:
+        return f"only {with_ctx}/{n} answers had retrieved context (tenant corpus missing?)"
+    return None
 
 
 async def main() -> int:
@@ -152,6 +197,24 @@ async def main() -> int:
     if not answered:
         print("run_baseline: no sample produced an answer; nothing to score", file=sys.stderr)
         return 1
+    bad = gate_phase1(data)
+    if bad:
+        print(f"run_baseline: refusing to score - {bad}", file=sys.stderr)
+        return 1
+
+    # Only samples the pipeline actually grounded get scored. evals.metrics falls back to the GOLDEN
+    # relevant_contexts when actual_contexts is empty, which would score a "couldn't find it" refusal against
+    # context the responder never saw - a number that looks like faithfulness but measures nothing.
+    scored = [s for s in answered if s.get("actual_contexts")]
+    kept_ids = {id(s) for s in scored}
+    excluded = [{"id": s.get("id"), "question": s["question"][:70],
+                 "why": "blocked by input rail" if s.get("_blocked") else "no context retrieved"}
+                for s in data["rag_samples"] if id(s) not in kept_ids]
+    if excluded:
+        print(f"phase 2: excluding {len(excluded)} ungrounded sample(s) from the metrics: "
+              + "; ".join(f"{e['id']} ({e['why']})" for e in excluded))
+    n_total = len(data["rag_samples"])
+    data = {**data, "rag_samples": scored}
 
     key_name = pick_judge_key()
     print(f"phase 2: judge key from {key_name}")
@@ -166,8 +229,9 @@ async def main() -> int:
         "run_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "judge": {"model": JUDGE_MODEL, "key_from": key_name, "calls": budget.n, "budget": a.budget},
         "pipeline": data.get("_phase1", {}),
-        "samples_scored": len(answered),
-        "samples_total": len(data["rag_samples"]),
+        "samples_scored": len(scored),
+        "samples_total": n_total,
+        "samples_excluded": excluded,
         "wall_clock_s": round(time.perf_counter() - t0),
         "means": means,
         "per_sample": {k: df.to_dict(orient="records") for k, df in dfs.items()},

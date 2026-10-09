@@ -116,7 +116,11 @@ class Settings(BaseSettings):
     keep_old_collections: int = 1
     rebuild_lock_ttl_s: int = Field(60, ge=3)  # heartbeat renews it while a rebuild is alive; expiry = crashed holder
 
-    assistant_domain: str = "Kubernetes, Intel hardware and enterprise networking"
+    # Fallback topic policy for the input rail when a tenant has no domain_description. It MUST cover the corpus in
+    # DATA/true_data: the previous default omitted Databricks, so the rail blocked the three Databricks questions in
+    # evals/golden_dataset.json as off-domain - the shipped default refused questions about the shipped data.
+    assistant_domain: str = ("Kubernetes (architecture, Jobs, CronJobs, autoscaling, work queues), container "
+                             "workloads, Databricks job automation, Intel hardware and enterprise networking")
 
     # --- observability ---
     logfire_token: SecretStr | None = None

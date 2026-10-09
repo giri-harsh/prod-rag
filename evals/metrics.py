@@ -9,10 +9,24 @@ Contexts are truncated to 300 chars (2 chunks max) so no single request exceeds 
 
 import os
 import asyncio
+import sys
+import types
+
 import logfire
 import pandas as pd
 from openai import AsyncOpenAI
 
+# ragas 0.4.3 imports `langchain_community.chat_models.vertexai.ChatVertexAI` unconditionally, and
+# langchain-community >= 0.4 removed that module. Pinning langchain-community back to 0.3.x would drag
+# langchain-core below 1.0 and break the app itself, so the one symbol ragas needs (for an isinstance check on
+# a provider this project never uses) is supplied here instead. Drop this when ragas stops importing it.
+if "langchain_community.chat_models.vertexai" not in sys.modules:
+    try:
+        import langchain_community.chat_models.vertexai  # noqa: F401
+    except ImportError:
+        _shim = types.ModuleType("langchain_community.chat_models.vertexai")
+        _shim.ChatVertexAI = type("ChatVertexAI", (), {})
+        sys.modules["langchain_community.chat_models.vertexai"] = _shim
 
 from ragas.llms import llm_factory
 from ragas.embeddings import HuggingFaceEmbeddings
