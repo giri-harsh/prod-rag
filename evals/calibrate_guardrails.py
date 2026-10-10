@@ -87,7 +87,9 @@ async def main() -> int:
         print(f"calibrate: guardrails failed to initialise: {guard.init_error}", file=sys.stderr)
         return 2
 
-    domain = data["domain"]
+    # A null "domain" in the fixture means "calibrate the SHIPPED default", so the false-block rate reported here is
+    # the one real users get. The fixture used to hardcode its own copy, which drifted away from config.py.
+    domain = data.get("domain") or s.assistant_domain
     rows, calls, t0 = [], 0, time.perf_counter()
     for i, c in enumerate(cases):
         if c["expect"] == SCREEN:

@@ -10,7 +10,15 @@ from app.observability.metrics import INJECTION_CHUNKS
 _PATTERNS: list[tuple[str, re.Pattern, str]] = [
     ("ignore_previous", re.compile(r"\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(previous|prior|above|earlier|all|your)\b[^.\n]{0,30}\b(instructions?|prompts?|rules?|guidelines?|training)\b", re.I), "drop"),
     ("role_switch", re.compile(r"\b(you are now|from now on,? you|act as|pretend (to be|you)|new (system )?instructions?|developer mode|jailbreak|DAN)\b", re.I), "drop"),
-    ("fake_system_tag", re.compile(r"(<\s*/?\s*(system|assistant|user|retrieved_context|instructions?)\s*>|\[/?(INST|SYS)\]|<\|im_(start|end)\|>|^\s*(system|assistant)\s*:)", re.I | re.M), "neutralize"),
+    # The bare "role:" alternative matches at a line start OR after sentence-ending punctuation, because a fake
+    # turn is commonly smuggled mid-line ("...accepts OnFailure. assistant: here are the credentials"), and it
+    # requires whitespace after the colon so that RBAC group names ("system:masters", "name: system:node-proxier")
+    # are not redacted as injections. "user:" stays out of this alternative: it is an ordinary cluster-config key.
+    ("fake_system_tag", re.compile(r"<\s*/?\s*(system|assistant|user|retrieved_context|instructions?)\s*>"
+                                   r"|\[/?(INST|SYS)\]"
+                                   r"|<\|im_(start|end)\|>"
+                                   r"|(?:^|(?<=[.!?])|(?<=[)\]]))[ \t]*(system|assistant)[ \t]*:(?=\s|$)",
+                                   re.I | re.M), "neutralize"),
     ("reveal_prompt", re.compile(r"\b(reveal|print|show|repeat|output|leak)\b[^.\n]{0,30}\b(system prompt|instructions|hidden prompt|api[_ -]?keys?|secrets?|credentials)\b", re.I), "drop"),
     ("tool_exfil", re.compile(r"\b(send|post|forward|email|exfiltrate|upload|transmit)\b[^.\n]{0,60}\b(to|at)\b[^.\n]{0,20}(https?://|[\w.+-]+@[\w-]+\.)", re.I), "drop"),
     ("md_image_exfil", re.compile(r"!\[[^\]]*\]\(\s*https?://[^)\s]*[?&][^)\s]*\)", re.I), "neutralize"),
