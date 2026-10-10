@@ -10,6 +10,11 @@ cannot drain the production key) with the cooldowns that tier needs.
 
 Every judge request is counted and the run aborts if it would pass --budget. The result file holds per-sample
 scores, the means, the judge-call count and enough provenance to tell two runs apart.
+
+Phase 2 checkpoints each metric to --checkpoint as it finishes, so an interrupted run (the full six metrics take
+over an hour of cooldowns) resumes instead of paying for the finished metrics again. The checkpoint is keyed to
+the exact answers it scored, so it is discarded automatically once the pipeline's output changes; --fresh forces
+that too.
 Secrets are never printed.
 """
 from __future__ import annotations
@@ -186,6 +191,9 @@ async def main() -> int:
     ap.add_argument("--skip-phase1", action="store_true", help="reuse --phase1-json instead of querying the pipeline")
     ap.add_argument("--delay", type=float, default=float(os.environ.get("EVAL_DELAY_S", "4")),
                     help="seconds between live queries (provider rate limits)")
+    ap.add_argument("--checkpoint", default="evals/.phase2_checkpoint.json",
+                    help="per-metric resume file; metrics already scored for these exact answers are reused")
+    ap.add_argument("--fresh", action="store_true", help="ignore and overwrite the phase-2 checkpoint")
     a = ap.parse_args()
 
     p1 = pathlib.Path(a.phase1_json)
@@ -229,12 +237,26 @@ async def main() -> int:
     install_budget(budget)
     from evals.metrics import JUDGE_MODEL, run_all_metrics
 
+    ckpt_path = pathlib.Path(a.checkpoint) if a.checkpoint else None
+    if a.fresh and ckpt_path and ckpt_path.exists():
+        ckpt_path.unlink()
+        print(f"phase 2: discarded the checkpoint at {ckpt_path} (--fresh)")
+
     t0 = time.perf_counter()
-    dfs = await run_all_metrics(data, status_cb=lambda m: print("  " + m, flush=True))
+    prov: dict = {}
+    dfs = await run_all_metrics(data, status_cb=lambda m: print("  " + m, flush=True),
+                               checkpoint=ckpt_path, calls_so_far=lambda: budget.n, provenance=prov)
     means = {k: round(float(df[df.columns[-1]].mean()), 3) for k, df in dfs.items()}
+    # Judge calls come in two flavours once a run can resume: what THIS process spent, and what the whole
+    # baseline cost across the interrupted attempts that fed the checkpoint. Report both; the night budget is
+    # charged the total.
+    per_metric = prov.get("calls_by_metric") or {}
+    total_calls = sum(v for v in per_metric.values() if isinstance(v, int))
     result = {
         "run_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-        "judge": {"model": JUDGE_MODEL, "key_from": key_name, "calls": budget.n, "budget": a.budget},
+        "judge": {"model": JUDGE_MODEL, "key_from": key_name, "calls": budget.n,
+                  "calls_all_attempts": total_calls, "calls_by_metric": per_metric,
+                  "resumed_metrics": prov.get("resumed_metrics") or [], "budget": a.budget},
         "pipeline": data.get("_phase1", {}),
         "samples_scored": len(scored),
         "samples_total": n_total,
@@ -244,7 +266,9 @@ async def main() -> int:
         "per_sample": {k: df.to_dict(orient="records") for k, df in dfs.items()},
     }
     pathlib.Path(a.out).write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print("\n" + json.dumps({"means": means, "judge_calls": budget.n, "out": a.out}, indent=2))
+    print("\n" + json.dumps({"means": means, "judge_calls_this_run": budget.n,
+                             "judge_calls_all_attempts": total_calls,
+                             "resumed": result["judge"]["resumed_metrics"], "out": a.out}, indent=2))
     gates = {"faithfulness": 0.8, "answer_relevancy": 0.8}
     below = {k: means[k] for k, t in gates.items() if k in means and means[k] < t}
     if below:
