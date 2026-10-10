@@ -42,10 +42,15 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(1200, ge=16)  # max_completion_tokens (reasoning models spend part of it thinking)
     groq_slug: str = "rag"
     groq_slug_fallback: str = "brag"
-    llm_primary_model: str = "llama-3.3-70b-versatile"
-    llm_fallback_model: str = "llama-3.1-8b-instant"
+    # Groq retired the llama-3.x line. These defaults named `llama-3.3-70b-versatile` and
+    # `llama-3.1-8b-instant` long after they stopped existing on the account, which only stayed invisible
+    # because .env overrides all three: a fresh deployment that set just the keys would have got 404
+    # model_not_found on every call, and because the rails fail closed, a 503 on every single request. The
+    # defaults now name the models verified live by scripts/check_keys.py.
+    llm_primary_model: str = "openai/gpt-oss-120b"
+    llm_fallback_model: str = "openai/gpt-oss-20b"
     guard_engine: Literal["actions", "runtime"] = "actions"  # "runtime" = full NeMo Colang flow engine (~20x more CPU)
-    guard_model: str = "llama-3.1-8b-instant"
+    guard_model: str = "openai/gpt-oss-20b"  # the model Q3's calibration measured (DOCS/08 § Calibration)
 
     # --- embeddings (Gemini GA) ---
     gemini_api_key: SecretStr | None = None
@@ -119,8 +124,12 @@ class Settings(BaseSettings):
     # Fallback topic policy for the input rail when a tenant has no domain_description. It MUST cover the corpus in
     # DATA/true_data: the previous default omitted Databricks, so the rail blocked the three Databricks questions in
     # evals/golden_dataset.json as off-domain - the shipped default refused questions about the shipped data.
-    assistant_domain: str = ("Kubernetes (architecture, Jobs, CronJobs, autoscaling, work queues), container "
-                             "workloads, Databricks job automation, Intel hardware and enterprise networking")
+    # Naming Redis is not cosmetic: calibration refused "how do I fill a Redis work queue from the CLI?" - a
+    # question DATA/true_data answers - because the guard model would not infer the queue's data store from
+    # "work queues" alone. A topic policy has to name the components the corpus actually documents.
+    assistant_domain: str = ("Kubernetes (architecture, Jobs, CronJobs, autoscaling, Redis-backed work queues "
+                             "and their CLI tools), container workloads, Databricks job automation, Intel "
+                             "hardware and enterprise networking")
 
     # --- observability ---
     logfire_token: SecretStr | None = None

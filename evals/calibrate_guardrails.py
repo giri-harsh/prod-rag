@@ -4,8 +4,10 @@
                                                       [--only jailbreak,benign_off_domain]
 
 Calls `Guardrails.check_input` directly instead of going through /query: the input rail is what is being
-calibrated, and one rail check is one Groq call, so 110 LLM cases cost 110 calls instead of ~330. The 10
-chunk-injection cases are measured against `screen_chunks`, which is regex-only and costs nothing.
+calibrated, so the 110 non-chunk cases cost at most 110 Groq calls instead of the ~330 a full request each
+would. Fewer in practice - a case stopped by the deterministic screen never reaches the guard model and is not
+counted as a call. The 10 chunk-injection cases are measured against `screen_chunks`, which is regex-only and
+costs nothing.
 
 Definitions (tests/live/adversarial_set.json carries the expectation per case):
   expect=allow  -> blocking it is a FALSE BLOCK   (denominator: all 40 benign on-domain cases)
@@ -37,19 +39,23 @@ SET_PATH = pathlib.Path("tests/live/adversarial_set.json")
 ALLOW, BLOCK, SCREEN = "allow", "block", "screen"
 
 
-async def check_one(guard, text: str, domain: str, attempts: int = 3) -> tuple[bool | None, str | None]:
-    """(blocked, error). The rails fail closed, so a transient upstream failure would otherwise be counted as a
-    block and inflate the false-block rate. Retry, then record it as an error and exclude it from the rates."""
+async def check_one(guard, text: str, domain: str, attempts: int = 3) -> tuple[bool | None, str | None, str | None]:
+    """(blocked, error, rail). The rails fail closed, so a transient upstream failure would otherwise be counted
+    as a block and inflate the false-block rate. Retry, then record it as an error and exclude it from the rates.
+
+    The rail name is recorded because the two layers fail differently and the fix differs: a deterministic
+    pattern that false-blocks is a regex to narrow, while "self check input" is the rail prompt's judgement.
+    """
     last = None
     for i in range(attempts):
         try:
             r = await guard.check_input(text, domain=domain)
-            return bool(r.blocked), None
+            return bool(r.blocked), None, r.rail
         except Exception as e:  # noqa: BLE001 - GuardrailUnavailable and anything under it
             last = f"{type(e).__name__}: {e}"[:200]
             if i < attempts - 1:
                 await asyncio.sleep(5 * (i + 1))
-    return None, last
+    return None, last, None
 
 
 def rate(num: int, den: int) -> float:
@@ -66,7 +72,7 @@ async def main() -> int:
     a = ap.parse_args()
 
     from app.config import load_settings
-    from app.guardrails.injection import screen_chunks
+    from app.guardrails.injection import USER_SCREEN_NAMES, screen_chunks
     from app.guardrails.rails import Guardrails
     from app.resilience import Breakers
 
@@ -97,15 +103,19 @@ async def main() -> int:
             screened = bool(rep.dropped or rep.neutralized)
             rows.append({**{k: c[k] for k in ("id", "category", "expect")}, "screened": screened,
                          "findings": rep.findings or [], "correct": screened})
-            print(f"  [{i + 1}/{len(cases)}] {c['id']} screened={screened} {rep.findings}")
+            print(f"  [{i + 1}/{len(cases)}] {c['id']} screened={screened} {rep.findings}", flush=True)
             continue
-        blocked, err = await check_one(guard, c["text"], domain)
-        calls += 1
+        blocked, err, rail = await check_one(guard, c["text"], domain)
+        # A case the deterministic screen blocked never reached the guard model, so it is not a Groq call. The
+        # budget and the published cost per run would otherwise be overstated by every regex hit.
+        if rail not in USER_SCREEN_NAMES:
+            calls += 1
         correct = None if blocked is None else (blocked == (c["expect"] == BLOCK))
         rows.append({**{k: c[k] for k in ("id", "category", "expect")}, "blocked": blocked,
-                     "error": err, "correct": correct})
+                     "rail": rail, "error": err, "correct": correct})
         flag = "ERR" if blocked is None else ("ok" if correct else "MISS")
-        print(f"  [{i + 1}/{len(cases)}] {c['id']} expect={c['expect']} blocked={blocked} {flag}")
+        print(f"  [{i + 1}/{len(cases)}] {c['id']} expect={c['expect']} blocked={blocked}"
+              f"{' rail=' + rail if rail else ''} {flag}", flush=True)
         if calls >= a.budget:
             print(f"calibrate: guard-call budget {a.budget} reached, stopping early", file=sys.stderr)
             break
@@ -140,6 +150,10 @@ async def main() -> int:
                        "rate_pct": rate(len(false_passes), len(block_rows)), "ids": false_passes},
         "chunk_injection": {"screened": sum(r["screened"] for r in screen_rows), "of": len(screen_rows),
                             "missed_ids": [r["id"] for r in screen_rows if not r["screened"]]},
+        # Which layer stopped each blocked case: a deterministic pattern name, or "self check input" for the rail
+        # prompt's own judgement. Also says how many attacks never reached the guard model (= Groq calls saved).
+        "blocked_by": {name: sum(1 for r in rows if r.get("blocked") and r.get("rail") == name)
+                       for name in sorted({r.get("rail") for r in rows if r.get("blocked")}, key=str)},
         "per_category": per_cat,
         "rows": rows,
     }

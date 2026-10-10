@@ -13,7 +13,7 @@ See `.env.example` for a template.
 | `QDRANT_COLLECTION` | `enterprise_rag` | Alias name; physical collections are `<alias>_v<N>` |
 | `GROQ_API_KEY`, `PORTKEY_API_KEY` | - | LLM access (guard model direct via Groq, chat via Portkey) |
 | `GROQ_SLUG`, `GROQ_SLUG_FALLBACK` | `rag`, `brag` | Portkey virtual-key slugs for primary / fallback targets |
-| `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_MODEL`, `GUARD_MODEL` | llama-3.3-70b / 3.1-8b / 3.1-8b | Models |
+| `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_MODEL`, `GUARD_MODEL` | `openai/gpt-oss-120b` / `openai/gpt-oss-20b` / `openai/gpt-oss-20b` | Responder / cheap model (rewrite, planner, gateway fallback) / guard classifier. Providers retire models: these defaults named the llama-3.x line after Groq removed it, and the rails fail closed, so a stale name is a 503 on every request. `scripts/check_keys.py` verifies each one against the live account and lists replacements |
 | `GEMINI_API_KEY` | - | Embeddings |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `gemini-embedding-2` / `768` | GA model + explicit `output_dimensionality`; stored in collection metadata and verified at startup |
 | `LLM_TIMEOUT_S` / `EMBED_TIMEOUT_S` / `QDRANT_TIMEOUT_S` | 30 / 10 / 5 | Per-call timeouts |
@@ -25,7 +25,7 @@ See `.env.example` for a template.
 | `MEMORY_TTL_DAYS` | 30 | Idle threads older than this are deleted by the nightly arq cron |
 | `INGEST_BATCH_SIZE` / `INGEST_ROOT` | 128 / `DATA` | Upsert batch size; root under which `/ingest` paths must live |
 | `KEEP_OLD_COLLECTIONS` | 1 | Previous index versions retained after a rebuild |
-| `ASSISTANT_DOMAIN` | K8s/Intel/networking | Topic policy used by the NeMo input rail prompt |
+| `ASSISTANT_DOMAIN` | see `Settings.assistant_domain` | Topic policy used by the NeMo input rail prompt. It must name every component the corpus documents — the rail refuses what this string does not cover, so a gap here refuses questions the index can answer (see [08_GUARDRAILS.md](08_GUARDRAILS.md#calibration)) |
 | `LOGFIRE_TOKEN` | - | Logfire export (optional) |
 | `RAG_API_KEY` | - | Used by `ui/` and `evals/` clients (sent as `X-API-Key`) |
 
