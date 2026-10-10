@@ -96,5 +96,6 @@ docker_report.md
 docker_*.log
 docker_query.json
 
-# headless eval intermediate (live answers, regenerated on every run)
+# headless eval intermediates (live answers and the phase-2 resume file, regenerated on every run)
 evals/.phase1.json
+evals/.phase2_checkpoint.json

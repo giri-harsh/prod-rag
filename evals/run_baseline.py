@@ -60,22 +60,43 @@ def pick_judge_key() -> str:
             return name
     raise SystemExit("run_baseline: no Groq key available for the judge (set JUDGE_GROQ)")
 
-RESPONSE_TRUNCATE = 300  # same as evals/pipeline.py: the judge sees what the UI would show
-CONTEXTS_KEPT = 5
-EVAL_DOMAIN = ("Kubernetes (architecture, Jobs, CronJobs, autoscaling, work queues), container workloads and "
-               "Databricks job automation")  # the actual subject matter of DATA/true_data
+# The judge scores the WHOLE answer. evals/pipeline.py (the Streamlit eval app) cuts answers to 300 chars for
+# display, and copying that here cost real faithfulness: the cut lands mid-word ("such as `kube-controller-mana"),
+# and a statement the responder never finished cannot be supported by any context.
+CONTEXTS_KEPT = 5  # = Settings.final_k: exactly the chunks the responder was given
+EVAL_DOMAIN = ("Kubernetes (architecture, Jobs, CronJobs, autoscaling, Redis-backed work queues and their CLI "
+               "tools), container workloads and Databricks job automation")  # subject matter of DATA/true_data
 
 
 class JudgeBudget:
-    """Counts judge requests and refuses to go over budget (raises inside the metric call)."""
+    """Counts judge requests and tokens, and refuses to go over budget (raises inside the metric call).
+
+    Tokens are counted because they, not requests, are what actually runs out: the judge model's cap is 200,000
+    tokens/day, and a reasoning judge spends ~2,500 of them on one judgment. Without this number in the result
+    file, a 429 halfway through a metric looks like a network problem rather than a budget that was planned wrong.
+    """
 
     def __init__(self, limit: int):
         self.limit, self.n = limit, 0
+        self.prompt_tokens = self.completion_tokens = 0
 
     def tick(self):
         self.n += 1
         if self.n > self.limit:
             raise RuntimeError(f"judge-call budget exceeded ({self.n} > {self.limit})")
+
+    def add_usage(self, usage) -> None:
+        self.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        self.completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
+
+    @property
+    def tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
+    def report(self) -> dict:
+        return {"calls": self.n, "prompt_tokens": self.prompt_tokens,
+                "completion_tokens": self.completion_tokens, "total_tokens": self.tokens,
+                "tokens_per_call": round(self.tokens / self.n, 1) if self.n else 0.0}
 
 
 def install_budget(budget: JudgeBudget):
@@ -86,7 +107,9 @@ def install_budget(budget: JudgeBudget):
 
     async def counted(self, *a, **kw):
         budget.tick()
-        return await orig(self, *a, **kw)
+        res = await orig(self, *a, **kw)
+        budget.add_usage(getattr(res, "usage", None))
+        return res
 
     completions.AsyncCompletions.create = counted
 
@@ -145,7 +168,7 @@ async def phase1(golden: dict, delay_s: float) -> dict:
                     smp["actual_tools_called"] = ["unknown"]
                 else:
                     d = r.json()
-                    smp["actual_response"] = (d.get("answer") or "")[:RESPONSE_TRUNCATE]
+                    smp["actual_response"] = d.get("answer") or ""
                     smp["actual_contexts"] = (d.get("contexts") or [])[:CONTEXTS_KEPT]
                     smp["actual_tools_called"] = [detect_tool(d.get("thought_process") or [])]
                     smp["_cache_hit"] = bool(d.get("cache_hit"))
@@ -245,7 +268,8 @@ async def main() -> int:
     t0 = time.perf_counter()
     prov: dict = {}
     dfs = await run_all_metrics(data, status_cb=lambda m: print("  " + m, flush=True),
-                               checkpoint=ckpt_path, calls_so_far=lambda: budget.n, provenance=prov)
+                               checkpoint=ckpt_path, calls_so_far=lambda: budget.n,
+                               tokens_so_far=lambda: budget.tokens, provenance=prov)
     means = {k: round(float(df[df.columns[-1]].mean()), 3) for k, df in dfs.items()}
     # Judge calls come in two flavours once a run can resume: what THIS process spent, and what the whole
     # baseline cost across the interrupted attempts that fed the checkpoint. Report both; the night budget is
@@ -256,7 +280,12 @@ async def main() -> int:
         "run_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "judge": {"model": JUDGE_MODEL, "key_from": key_name, "calls": budget.n,
                   "calls_all_attempts": total_calls, "calls_by_metric": per_metric,
+                  "tokens_by_metric": prov.get("tokens_by_metric") or {},
+                  "usage_this_run": budget.report(),
                   "resumed_metrics": prov.get("resumed_metrics") or [], "budget": a.budget},
+        # What the judge was shown. A baseline is only a pipeline measurement if this matches the responder's
+        # prompt, and it silently did not for a whole run (see evals/metrics._contexts_the_responder_saw).
+        "judge_context": prov.get("judge_context") or {},
         "pipeline": data.get("_phase1", {}),
         "samples_scored": len(scored),
         "samples_total": n_total,

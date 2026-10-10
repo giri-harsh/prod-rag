@@ -1,9 +1,9 @@
 """
 Phase 2 — RAGAS + Tool Correctness metrics.
 Uses JUDGE_GROQ key so production GROQ_API_KEY is never exhausted by eval runs.
-All LLM-based metrics run in batches of 5 with 30s cooldowns between sub-batches
-and 60s cooldowns between experiments — calibrated for Groq's 6,000 TPM on_demand tier.
-Contexts are truncated to 300 chars (2 chunks max) so no single request exceeds the limit.
+All LLM-based metrics run one sample at a time with cooldowns between samples and between experiments —
+calibrated for the 8,000 TPM / 200,000 TPD the judge model gets on Groq's on_demand tier.
+The judge is shown exactly the contexts the responder was shown (see _prep_samples).
 """
 
 
@@ -13,6 +13,7 @@ import datetime as dt
 import hashlib
 import json
 import pathlib
+import re
 import socket
 import sys
 import types
@@ -44,17 +45,26 @@ from ragas.metrics.collections import (
     AnswerCorrectness,
 )
 
+from app.guardrails.injection import wrap_untrusted
+
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 # Groq retired the llama-3.x line this judge used to run on (the key's model list is now gpt-oss, qwen, allam and
 # the speech models), so the judge model is read from the environment with a current default. It must stay
 # DIFFERENT from the responder model (openai/gpt-oss-120b): a model grading its own family rates itself well.
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "qwen/qwen3.8-27b")
+# qwen3 bills its thinking trace as completion tokens: ~2,500 tokens a judgment, so the judge model's
+# 200,000 tokens/day buys about 60 judgments - less than one metric over 14 samples. "none" turns thinking off
+# and is recorded in the result file and in the checkpoint fingerprint, because it is a judge-quality tradeoff,
+# not an implementation detail. Set JUDGE_REASONING=default to let the provider decide again.
+JUDGE_REASONING = os.getenv("JUDGE_REASONING", "none")
 COOLDOWN_STANDARD = 62
-COOLDOWN_MINI = 40       # between individual samples — lets sliding TPM window recover (~2,800 tok/sample)
+COOLDOWN_MINI = 40       # between individual samples — lets sliding TPM window recover
 GENERAL_BATCH_SIZE = 1  # one sample at a time: abatch_score fires calls concurrently per sample,
                          # so batch>1 stacks multiple samples' async calls inside the same second
-CONTEXT_TRUNCATE = 300  # chars per context chunk — reduces single request from ~7,700 to ~400 tokens
-CONTEXT_LIMIT = 2       # number of context chunks passed to RAGAS per sample
+# What the judge is allowed to see, in chars. This is the RESPONDER's context budget (Settings.max_context_chars),
+# not a judge-side economy measure: see _prep_samples.
+JUDGE_CONTEXT_CHARS = int(os.getenv("JUDGE_CONTEXT_CHARS", "25000"))
+_CTX_BLOCK = re.compile(r'<retrieved_context id="\d+">\n(.*?)\n</retrieved_context>', re.S)
 
 # Transient-failure handling. A full run is >1 h of wall clock (40 s cooldowns per sample), long enough that a
 # laptop's network WILL blip; that must not throw away metrics already paid for.
@@ -66,9 +76,27 @@ TRANSIENT_MARKERS = ("Connection error", "getaddrinfo failed", "Temporary failur
                      "Connection reset", "Server disconnected")
 
 
+def _apply_reasoning_policy(client):
+    """Send reasoning_effort on every judge request, if JUDGE_REASONING asks for one.
+
+    ragas builds its own request bodies, so the only place to inject a provider parameter is the client. It goes
+    through extra_body rather than a named kwarg so an SDK that does not know the parameter still passes it on.
+    """
+    if JUDGE_REASONING in ("", "default", "provider"):
+        return client
+    inner = client.chat.completions.create  # already wrapped by the caller's judge-call counter, if there is one
+
+    async def create(*a, **kw):
+        kw["extra_body"] = {**(kw.get("extra_body") or {}), "reasoning_effort": JUDGE_REASONING}
+        return await inner(*a, **kw)
+
+    client.chat.completions.create = create
+    return client
+
+
 def _build_judge():
     api_key = os.getenv("JUDGE_GROQ") or os.getenv("GROQ_API_KEY")
-    client = AsyncOpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
+    client = _apply_reasoning_policy(AsyncOpenAI(api_key=api_key, base_url=GROQ_BASE_URL))
     llm = llm_factory(JUDGE_MODEL, provider="openai", client=client)
     embeddings = HuggingFaceEmbeddings(
         model="sentence-transformers/all-MiniLM-L6-v2",
@@ -86,22 +114,31 @@ async def _cooldown(seconds: int, label: str, status_cb=None):
         status_cb(f"✅ Ready — starting next experiment.")
         
         
+def _contexts_the_responder_saw(raw_contexts: list) -> list:
+    """The chunk texts that actually reached the responder's prompt, in its order, untruncated.
+
+    Faithfulness asks "is every statement in the answer supported by the context?", so it is only a measurement
+    of the pipeline if the judge sees the SAME context the answer was written from. This used to pass 2 chunks cut
+    to 300 chars each - 600 of ~7,500 chars - to stay under a TPM ceiling, and the result was a faithfulness of
+    0.235 that said nothing about the responder: grounded answers like "a Job belongs to the batch/v1 API group"
+    scored 0.0 because the sentence supporting them sat past the cut.
+
+    The selection is delegated to the production helper (whole chunks until the budget runs out, tag-like text
+    stripped) instead of being re-implemented here, so the two cannot drift apart.
+    """
+    return _CTX_BLOCK.findall(wrap_untrusted(list(raw_contexts), JUDGE_CONTEXT_CHARS))
+
+
 def _prep_samples(golden_dataset: dict) -> list:
-    """
-    Returns only samples with actual_response populated.
-    Truncates contexts to CONTEXT_TRUNCATE chars and limits to CONTEXT_LIMIT chunks
-    so a single RAGAS LLM call stays well under the 6,000 TPM ceiling.
-    (Live contexts from Qdrant are ~1,500 chars each — without truncation a single
-    Faithfulness request exceeds 7,000 tokens which hard-fails on the on_demand tier.)
-    """
+    """Samples with an answer, each carrying exactly the context its answer was written from."""
     valid = []
     for s in golden_dataset["rag_samples"]:
         response = s.get("actual_response", "").strip()
         if not response:
             continue
-        raw_contexts = s.get("actual_contexts") or s.get("relevant_contexts") or []
-        contexts = [c[:CONTEXT_TRUNCATE] for c in raw_contexts[:CONTEXT_LIMIT]]
-        valid.append({**s, "actual_contexts": contexts})
+        raw_contexts = list(s.get("actual_contexts") or s.get("relevant_contexts") or [])
+        valid.append({**s, "actual_contexts": _contexts_the_responder_saw(raw_contexts),
+                      "actual_contexts_raw": raw_contexts})
     return valid
 
 
@@ -188,7 +225,7 @@ class Checkpoint:
 
     def __init__(self, path, samples: list, status_cb=None):
         self.path = pathlib.Path(path) if path else None
-        self.fingerprint = {"judge_model": JUDGE_MODEL, "n": len(samples),
+        self.fingerprint = {"judge_model": JUDGE_MODEL, "judge_reasoning": JUDGE_REASONING, "n": len(samples),
                             "scored": _scored_digest(samples)}
         self.data: dict = {"fingerprint": self.fingerprint, "metrics": {}}
         self.resumed: list[str] = []
@@ -215,8 +252,8 @@ class Checkpoint:
         self.resumed.append(key)
         return pd.DataFrame(entry["rows"])
 
-    def save(self, key: str, df: pd.DataFrame, calls) -> None:
-        self.data["metrics"][key] = {"rows": df.to_dict(orient="records"), "calls": calls,
+    def save(self, key: str, df: pd.DataFrame, calls, tokens=None) -> None:
+        self.data["metrics"][key] = {"rows": df.to_dict(orient="records"), "calls": calls, "tokens": tokens,
                                      "at": dt.datetime.now().astimezone().isoformat(timespec="seconds")}
         if not self.path:
             return
@@ -228,6 +265,10 @@ class Checkpoint:
     @property
     def calls_by_metric(self) -> dict:
         return {k: v.get("calls") for k, v in self.data["metrics"].items()}
+
+    @property
+    def tokens_by_metric(self) -> dict:
+        return {k: v.get("tokens") for k, v in self.data["metrics"].items()}
 
 
 def _experiments(judge_llm, ragas_embeddings) -> list:
@@ -272,13 +313,14 @@ def _tool_correctness(samples: list) -> pd.DataFrame:
 
 
 async def run_all_metrics(golden_dataset: dict, status_cb=None, checkpoint=None, calls_so_far=None,
-                          provenance: dict | None = None) -> dict:
+                          provenance: dict | None = None, tokens_so_far=None) -> dict:
     """
     Runs all 6 experiments. Returns dict keyed by metric name -> DataFrame.
     status_cb(message: str) is called for live UI updates.
 
     checkpoint    - path to a resume file; metrics already in it are reused instead of re-scored.
     calls_so_far  - callable returning the judge-call count so far, used to record what each metric cost.
+    tokens_so_far - callable returning judge tokens so far; the judge's hard limit is tokens per day, not calls.
     provenance    - dict filled in with which metrics were resumed and what each one cost.
     """
     judge_llm, ragas_embeddings = _build_judge()
@@ -310,13 +352,19 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None, checkpoint=None,
                 status_cb(f"Exp {i}/{total} - {label} ({len(samples)} samples)...")
             with logfire.span(f"Exp {i} - {label}"):
                 before = calls_so_far() if calls_so_far else None
+                before_tok = tokens_so_far() if tokens_so_far else None
                 inputs = [make_input(s) for s in samples]
                 scores = await _batched_score(build_metric(), inputs, samples, status_cb, label)
                 df = _score_df(key, samples, scores)
                 results[key] = df
                 spent = (calls_so_far() - before) if calls_so_far else None
-                ckpt.save(key, df, spent)
-                logfire.info(f"{label} done", avg=round(df[key].mean(), 3), judge_calls=spent)
+                spent_tok = (tokens_so_far() - before_tok) if tokens_so_far else None
+                ckpt.save(key, df, spent, spent_tok)
+                logfire.info(f"{label} done", avg=round(df[key].mean(), 3), judge_calls=spent,
+                             judge_tokens=spent_tok)
+                if status_cb:
+                    status_cb(f"{label}: mean {round(float(df[key].mean()), 3)} "
+                              f"({spent} calls, {spent_tok} tokens)")
             pending_cooldown = label
 
         if status_cb:
@@ -332,6 +380,20 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None, checkpoint=None,
     if provenance is not None:
         provenance["resumed_metrics"] = list(ckpt.resumed)
         provenance["calls_by_metric"] = ckpt.calls_by_metric
+        provenance["tokens_by_metric"] = ckpt.tokens_by_metric
         provenance["checkpoint"] = str(ckpt.path) if ckpt.path else None
+        # What the judge was actually shown, so no reader has to trust that it matched the responder's prompt.
+        provenance["judge_context"] = {
+            "budget_chars": JUDGE_CONTEXT_CHARS,
+            "chunks": [len(s["actual_contexts"]) for s in samples],
+            "chars": [sum(len(c) for c in s["actual_contexts"]) for s in samples],
+            "dropped_by_budget": [
+                {"question": s["question"][:65],
+                 "chunks_retrieved": len(s.get("actual_contexts_raw") or s["actual_contexts"])}
+                for s in samples
+                if len(s["actual_contexts"]) < len(s.get("actual_contexts_raw") or s["actual_contexts"])],
+            "reasoning": JUDGE_REASONING,
+            "judge_model": JUDGE_MODEL,
+        }
 
     return results

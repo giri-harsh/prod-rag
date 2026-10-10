@@ -223,7 +223,9 @@ With 10s delay between calls: ~3.5 min. Daily limit for 70b: 100,000 TPD ✅
 | Answer Correctness | 2–3 | ~2,752–4,128 | ✅ Safe | 14 × 40s = 560s |
 | Tool Correctness | 0 | 0 | ✅ Free | — |
 
-**Context truncation**: contexts from Qdrant are ~1,500 chars each. Without truncation a single Faithfulness call exceeds 7,000 tokens. Fix: `CONTEXT_TRUNCATE = 300`, `CONTEXT_LIMIT = 2` → ~400 tokens of context per call.
+**Context truncation — removed; it invalidated the measurement.** Contexts from Qdrant are ~1,000–3,500 chars each and the responder is given all five (`final_k=5`, within `max_context_chars=25000`). To keep a Faithfulness call small, phase 2 used to pass the judge `CONTEXT_TRUNCATE = 300`, `CONTEXT_LIMIT = 2` — 600 chars of the ~7,500 the answer was written from. Faithfulness asks whether every statement in the answer is supported by the context it was given, so the result measured the truncation, not the pipeline: the 2026-10-10 run scored 0.235, with grounded answers such as *"a Job belongs to the `batch/v1` API group"* scoring **0.0** because the supporting sentence sat past the cut.
+
+`evals/metrics._contexts_the_responder_saw()` now hands the judge exactly the chunks that reached the responder's prompt, untruncated, and it delegates the selection to the production helper (`wrap_untrusted`) so the two cannot drift apart. The answer is no longer truncated to 300 chars either — that cut landed mid-word, and an unfinished statement cannot be supported by anything. Every result file records `judge_context` (budget, chunks and chars per sample) so the match can be checked without re-reading the code.
 
 **Phase 2 total tokens**: 15 samples × 5 experiments × ~2,752 = ~206,400 tokens. Well within 500,000 TPD daily limit ✅
 
