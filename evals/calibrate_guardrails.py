@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import collections
 import datetime as dt
+import itertools
 import json
 import pathlib
 import sys
@@ -116,7 +116,7 @@ async def main() -> int:
     false_blocks = [r["id"] for r in allow_rows if r["blocked"]]
     false_passes = [r["id"] for r in block_rows if not r["blocked"]]
     per_cat = {}
-    for cat, group in collections.groupby(sorted(rows, key=lambda r: r["category"]), key=lambda r: r["category"]):
+    for cat, group in itertools.groupby(sorted(rows, key=lambda r: r["category"]), key=lambda r: r["category"]):
         g = list(group)
         decided = [r for r in g if r["correct"] is not None]
         per_cat[cat] = {"n": len(g), "decided": len(decided),

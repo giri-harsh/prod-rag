@@ -27,6 +27,13 @@ import uuid
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+for _stream in (sys.stdout, sys.stderr):
+    # evals/metrics.py puts emoji in its progress messages and a redirected stdout on Windows is cp1252,
+    # so printing the first one raises UnicodeEncodeError and kills the run before any metric is scored.
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - not a real stream (pytest capture); nothing to reconfigure
+        pass
 
 from dotenv import load_dotenv  # noqa: E402
 

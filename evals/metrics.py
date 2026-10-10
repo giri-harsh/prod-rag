@@ -40,7 +40,10 @@ from ragas.metrics.collections import (
 )
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-JUDGE_MODEL = "llama-3.1-8b-instant"
+# Groq retired the llama-3.x line this judge used to run on (the key's model list is now gpt-oss, qwen, allam and
+# the speech models), so the judge model is read from the environment with a current default. It must stay
+# DIFFERENT from the responder model (openai/gpt-oss-120b): a model grading its own family rates itself well.
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "qwen/qwen3.8-27b")
 COOLDOWN_STANDARD = 62
 COOLDOWN_MINI = 40       # between individual samples — lets sliding TPM window recover (~2,800 tok/sample)
 GENERAL_BATCH_SIZE = 1  # one sample at a time: abatch_score fires calls concurrently per sample,
