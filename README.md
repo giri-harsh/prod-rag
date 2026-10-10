@@ -17,6 +17,7 @@ coordinated blue/green rebuild, Prometheus metrics (internal port) and PII-redac
 | 158 tests pass offline (3 skipped: arq round trip, Qdrant-server index check, Redis pub/sub revocation); **161 pass, 0 skipped** against real Redis 8.10.2, Qdrant 1.19.2 and Postgres 16 servers | `pytest tests`, and the same with `REDIS_INTEGRATION_URL` / `QDRANT_INTEGRATION_URL` / `DATABASE_INTEGRATION_URL` set (one machine) |
 | load numbers in `DOCS/12_CAPACITY.md` | Locust against 4 uvicorn workers, real datastores + real BM25/FlashRank, **fake LLM/embeddings/guard model** (`APP_ENV=loadtest`), one laptop |
 | ruff, bandit, pip-audit clean; `kubeconform -strict` valid on `deploy/k8s/base` | local runs |
+| backup → **drop the live database** → restore → 1,798 rows back row-for-row, and 3/3 LangGraph threads reloaded through `AsyncPostgresSaver` | `scripts/backup_restore.sh` + `scripts/db_fingerprint.py` against local Postgres 16 ([DOCS/16](DOCS/16_POSTGRES_HA.md)) |
 
 | **NOT yet run** | how to run it |
 |---|---|
@@ -99,6 +100,7 @@ tests/                pytest suite (+ tests/live gated on keys)
 [04 Observability](DOCS/04_TRACING_AND_OBSERVABILITY.md) · [05 Environment](DOCS/05_ENVIRONMENT_VARIABLES.md) · [06 Gotchas](DOCS/06_KNOWN_GOTCHAS.md) ·
 [07 FlashRank](DOCS/07_FLASHRANK_RERANKING.md) · [08 Guardrails](DOCS/08_GUARDRAILS.md) · [09 LLM Gateway](DOCS/09_LLM_GATEWAY.md) ·
 [10 Evals](DOCS/10_EVALS.md) · [11 Evals pipeline](DOCS/11_EVALS_PIPELINE.md) · [12 Capacity](DOCS/12_CAPACITY.md) ·
-[13 Retrieval eval](DOCS/13_RETRIEVAL_EVAL.md) · [14 SLOs and runbooks](DOCS/14_SLOS_AND_RUNBOOKS.md) · [Architecture](ARCHITECTURE.md).
+[13 Retrieval eval](DOCS/13_RETRIEVAL_EVAL.md) · [14 SLOs and runbooks](DOCS/14_SLOS_AND_RUNBOOKS.md) ·
+[16 Postgres HA](DOCS/16_POSTGRES_HA.md) · [Architecture](ARCHITECTURE.md).
 Docs 01-07 and 12 describe the current code. 08-11 open with a "current implementation" note; the long tutorial text below it is background material (guardrail/gateway/eval concepts) and
 may mention prototype details (e.g. `ChatGroq`, `MemorySaver`) that no longer apply.

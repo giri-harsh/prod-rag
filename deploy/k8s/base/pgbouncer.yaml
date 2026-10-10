@@ -12,6 +12,17 @@ spec:
       labels: {app: pgbouncer}
     spec:
       securityContext: {runAsNonRoot: true, runAsUser: 70, seccompProfile: {type: RuntimeDefault}}
+      # Without this, both replicas can land on one node and the PDB's minAvailable:1 protects nothing against
+      # a node failure - every app pod talks to this Service. "preferred" rather than "required" so a
+      # single-node dev cluster still schedules both.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: {app: pgbouncer}
       containers:
         - name: pgbouncer
           image: edoburu/pgbouncer:v1.23.1-p3

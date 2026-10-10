@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# cluster.yaml documents `kubectl apply -k deploy/k8s/cnpg`, which needs this file to exist.
+# Kept separate from deploy/k8s/base on purpose: this overlay requires the CloudNativePG operator and its
+# CRDs to be installed first, so it cannot be part of the base that `kubectl apply -k deploy/k8s/base` uses.
+namespace: rag
+resources:
+  - cluster.yaml
