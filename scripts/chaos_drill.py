@@ -167,11 +167,37 @@ def stop_api(api: subprocess.Popen, port: int) -> None:
         print(f"chaos: warning - something is still listening on {port} after shutdown", file=sys.stderr)
 
 
-def start_service(name: str) -> dict:
+def start_service(name: str, log_dir: pathlib.Path) -> dict:
+    """Restart a service and wait for its port. bash's output goes to a FILE, never to a pipe.
+
+    This used to be `subprocess.run(..., capture_output=True, timeout=60)` and it hung the first real drill
+    FOREVER on the very first restart - after the kill had already succeeded, so the run was unrecoverable.
+
+    Why a pipe cannot be used here: the command backgrounds an msys2-built service binary, which inherits
+    bash's stdout/stderr handles even though its own fds are redirected to the service's log. bash exits, the
+    service keeps the write end open for its whole lifetime, and the pipe therefore never reaches EOF.
+
+    And `timeout=` is not a safety net for this on Windows: subprocess.run raises TimeoutExpired and then, on
+    the _mswindows branch, calls communicate() A SECOND TIME with no timeout to drain the pipes - which blocks
+    for as long as the service lives. Measured on this machine: a timeout=8 call returned after 218 s, and only
+    because the service was killed by hand.
+
+    Writing to a file means there are no pipes, so no reader threads and nothing to drain; the inherited file
+    handle is harmless. The log is kept and reported when the port does not come up, which is the only case
+    where bash's own output matters.
+    """
     port, _, cmd = SERVICES[name]
-    subprocess.run(["bash", "-lc", cmd], capture_output=True, text=True, timeout=60)
+    log_dir = pathlib.Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log = log_dir / f"start_{name}.log"
+    with log.open("w", encoding="utf-8") as fh:
+        rc = subprocess.run(["bash", "-lc", cmd], stdout=fh, stderr=subprocess.STDOUT,
+                            stdin=subprocess.DEVNULL, timeout=60).returncode
     up = wait_port(port, up=True, timeout=90)
-    return {"action": "start", "service": name, "port_open": up}
+    ev = {"action": "start", "service": name, "port_open": up, "rc": rc}
+    if not up:
+        ev["start_log"] = log.read_text(encoding="utf-8", errors="replace")[-800:]
+    return ev
 
 
 async def drive(client, key: str, seconds: float, stats: dict) -> None:
@@ -305,7 +331,16 @@ async def run(a) -> int:
                           f"phantom deviations", file=sys.stderr)
                     return 2
                 await phase(out, client, keys, f"{name}_down", a.phase_s)
-                out["events"].append(start_service(name))
+                restart = start_service(name, api_log.parent)
+                out["events"].append(restart)
+                if not restart["port_open"]:
+                    # Recovery cannot be measured if the dependency never came back, and the remaining
+                    # services would be killed against an already-broken system.
+                    out["aborted"] = {"service": name, "why": "did not come back up after the kill",
+                                      "event": restart}
+                    print(f"chaos: {name} did not come back on {SERVICES[name][0]} after the restart "
+                          f"(see {api_log.parent / f'start_{name}.log'}); aborting", file=sys.stderr)
+                    return 2
                 # give the dependency a moment to accept connections before judging recovery
                 await asyncio.sleep(3)
                 await phase(out, client, keys, f"{name}_recovered", a.phase_s)

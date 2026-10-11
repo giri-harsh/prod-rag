@@ -183,6 +183,64 @@ def test_kill_service_reports_a_port_it_could_not_close(monkeypatch):
         child.wait(timeout=30)
 
 
+def test_start_service_does_not_block_on_a_service_that_inherits_its_pipes(monkeypatch, tmp_path):
+    """Restarting a service must not hang the drill, even though the service keeps bash's fds open.
+
+    This is the defect that made the first real drill unrecoverable: start_service used
+    `subprocess.run(..., capture_output=True, timeout=60)`, the restarted msys2 service inherited bash's
+    stdout/stderr pipe handles, and the pipes never reached EOF. `timeout=` did not save it - on Windows
+    subprocess.run raises TimeoutExpired and then calls communicate() again with NO timeout, which blocked for
+    the service's whole lifetime (measured: 218 s for a timeout=8 call). The kill had already succeeded, so the
+    drill died holding the service down.
+
+    The fake service here inherits the handles on purpose - it is backgrounded with no redirect of its own -
+    and outlives the assertion by far, so this test hangs for ~120 s against the old implementation and
+    finishes in about a second against the fixed one.
+    """
+    port = _free_port()
+    script = tmp_path / "fake_service.py"
+    script.write_text(
+        "import socket, time\n"
+        "s = socket.socket()\n"
+        f"s.bind(('127.0.0.1', {port}))\n"
+        "s.listen(8)\n"
+        "time.sleep(120)\n", encoding="utf-8")
+    exe = sys.executable.replace("\\", "/")
+    # No `> log 2>&1` on the backgrounded process: it inherits whatever bash's stdout/stderr are.
+    cmd = f"nohup '{exe}' '{str(script).replace(chr(92), '/')}' &"
+    monkeypatch.setitem(drill.SERVICES, "fake", (port, pathlib.Path(sys.executable).name, cmd))
+
+    t0 = time.perf_counter()
+    ev = drill.start_service("fake", tmp_path)
+    elapsed = time.perf_counter() - t0
+    try:
+        assert ev["port_open"] is True, f"the fake service never opened its port: {ev}"
+        assert elapsed < 30, (f"start_service took {elapsed:.0f}s; it is waiting on pipes the restarted "
+                              f"service holds open (the service sleeps 120s)")
+        assert (tmp_path / "start_fake.log").exists(), "bash's output must land in a file, not a pipe"
+    finally:
+        for pid in drill.listening_pids(port):
+            try:
+                psutil.Process(pid).kill()
+            except psutil.Error:
+                pass
+
+
+def test_start_service_never_pipes_the_restart_command():
+    """Text guard, like the /IM one: a pipe here is wrong by construction, not just slow.
+
+    A refactor could reintroduce capture_output=True and still pass the timing test on a machine where the
+    service happens not to inherit the handles, then hang on the machine that matters.
+    """
+    src = (ROOT / "scripts" / "chaos_drill.py").read_text(encoding="utf-8")
+    code = re.sub(r'(?s)""".*?"""', "", src)
+    code = "\n".join(line.partition("#")[0] for line in code.splitlines())
+    body = code.split("def start_service")[1].split("\ndef ")[0]
+    assert "capture_output" not in body, \
+        "start_service pipes the restart command again; the service inherits the pipe and it never EOFs"
+    assert "PIPE" not in body, "start_service must redirect the restart command to a file, not a pipe"
+
+
 # --- verdicts ------------------------------------------------------------------------------------------
 
 def _out(**kw) -> dict:
