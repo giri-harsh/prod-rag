@@ -63,8 +63,8 @@ describe('browser id and session id derivation', () => {
 describe('cookies', () => {
   it('parses a header and ignores malformed parts; first occurrence wins', () => {
     const c = parseCookies('a=1; b="two"; =x; junk; a=2');
-    expect(c['a']).toBe('1');
-    expect(c['b']).toBe('two');
+    expect(c.a).toBe('1');
+    expect(c.b).toBe('two');
     expect(Object.keys(c).sort()).toEqual(['a', 'b']);
     expect(parseCookies(undefined)).toEqual({});
   });
@@ -72,7 +72,7 @@ describe('cookies', () => {
   it('does not let __proto__ style names pollute anything', () => {
     const c = parseCookies('__proto__=x; constructor=y');
     expect(Object.getPrototypeOf(c)).toBeNull();
-    expect(c['__proto__']).toBe('x');
+    expect(c.__proto__).toBe('x');
   });
 
   it('serialises HttpOnly + SameSite=Strict, and Secure only when asked', () => {

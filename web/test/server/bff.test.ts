@@ -47,7 +47,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const closed = new Promise<void>((r) => upstream.close(() => r()));
+  const closed = new Promise<void>((r) => upstream.close(() => { r(); }));
   upstream.closeAllConnections();
   await closed;
   await rm(staticDir, { recursive: true, force: true });
@@ -86,7 +86,7 @@ function post(base: string, body: unknown, headers: Record<string, string> = {})
 function cookieOf(res: Response): string {
   const sc = res.headers.get('set-cookie');
   expect(sc).toBeTruthy();
-  return (sc as string).split(';')[0] as string;
+  return (sc!).split(';')[0]!;
 }
 
 describe('POST /api/query', () => {
@@ -95,18 +95,18 @@ describe('POST /api/query', () => {
     const res = await post(base, { q: 'hello', session_id: 'sess1' });
     expect(res.status).toBe(200);
     const cookie = cookieOf(res);
-    const browserId = cookie.split('=')[1] as string;
+    const browserId = cookie.split('=')[1]!;
 
     expect(seen).toHaveLength(1);
-    const s = seen[0] as Seen;
+    const s = seen[0]!;
     expect(s.url).toBe('/query');
     expect(s.headers['x-api-key']).toBe(KEY);
     expect(JSON.parse(s.body)).toEqual({ q: 'hello', session_id: `${browserId}-sess1` });
     expect(s.headers['x-request-id']).toMatch(/^web-/);
 
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body['session_id']).toBe('sess1'); // never the derived id: it embeds the HttpOnly browser id
-    expect(body['answer']).toBe('ok');
+    expect(body.session_id).toBe('sess1'); // never the derived id: it embeds the HttpOnly browser id
+    expect(body.answer).toBe('ok');
     expect(JSON.stringify(body)).not.toContain(browserId);
     expect(JSON.stringify(body)).not.toContain(KEY);
   });
@@ -119,17 +119,17 @@ describe('POST /api/query', () => {
       { 'x-api-key': 'rag_attacker', authorization: 'Bearer attacker', 'x-tenant-id': 'other', 'x-forwarded-for': '6.6.6.6', 'x-request-id': 'spoofed' },
     );
     expect(res.status).toBe(200);
-    const s = seen[0] as Seen;
+    const s = seen[0]!;
     expect(s.headers['x-api-key']).toBe(KEY);
-    expect(s.headers['authorization']).toBeUndefined();
+    expect(s.headers.authorization).toBeUndefined();
     expect(s.headers['x-tenant-id']).toBeUndefined();
     expect(s.headers['x-forwarded-for']).toBeUndefined();
     expect(s.headers['x-request-id']).not.toBe('spoofed');
-    expect(s.headers['cookie']).toBeUndefined();
+    expect(s.headers.cookie).toBeUndefined();
     expect(Object.keys(JSON.parse(s.body) as object).sort()).toEqual(['q', 'session_id']);
     expect(s.body).not.toContain('evil-thread');
     expect(s.body).not.toContain('other-tenant');
-    expect(logs.find((l) => l['msg'] === 'request')?.['stripped']).toEqual(['thread_id', 'tenant_id', 'include_contexts', 'user_id']);
+    expect(logs.find((l) => l.msg === 'request')?.stripped).toEqual(['thread_id', 'tenant_id', 'include_contexts', 'user_id']);
   });
 
   it('keeps conversations of two browsers apart and a browser stable across requests', async () => {
@@ -159,7 +159,7 @@ describe('POST /api/query', () => {
   it('issues an HttpOnly SameSite=Strict cookie (Secure + __Host- when configured)', async () => {
     const plain = await start();
     const r1 = await post(plain.base, { q: 'a', session_id: 's' });
-    const sc1 = r1.headers.get('set-cookie') as string;
+    const sc1 = r1.headers.get('set-cookie')!;
     expect(sc1).toMatch(/^rag_bid=/);
     expect(sc1).toContain('HttpOnly');
     expect(sc1).toContain('SameSite=Strict');
@@ -167,7 +167,7 @@ describe('POST /api/query', () => {
     await r1.arrayBuffer();
     const secure = await start({ BFF_COOKIE_SECURE: '1' });
     const r2 = await post(secure.base, { q: 'a', session_id: 's' });
-    const sc2 = r2.headers.get('set-cookie') as string;
+    const sc2 = r2.headers.get('set-cookie')!;
     expect(sc2).toMatch(/^__Host-rag_bid=/);
     expect(sc2).toContain('Secure');
     expect(r2.headers.get('strict-transport-security')).toBeTruthy();
@@ -183,7 +183,7 @@ describe('POST /api/query', () => {
     [500, { error: 'internal server error' }, undefined, 502, 'upstream_error'],
   ])('propagates upstream %i faithfully (status %i, code %s) with Retry-After', async (status, upstreamBody, retryAfter, expectStatus, code) => {
     upstreamHandler = (_req, res) => {
-      res.writeHead(status as number, { 'content-type': 'application/json', ...(retryAfter ? { 'retry-after': retryAfter as string } : {}) });
+      res.writeHead(status, { 'content-type': 'application/json', ...(retryAfter ? { 'retry-after': retryAfter } : {}) });
       res.end(JSON.stringify(upstreamBody));
     };
     const { base } = await start();
@@ -203,7 +203,7 @@ describe('POST /api/query', () => {
     const dead = http.createServer();
     await new Promise<void>((r) => dead.listen(0, '127.0.0.1', r));
     const deadUrl = `http://127.0.0.1:${(dead.address() as AddressInfo).port}`;
-    await new Promise<void>((r) => dead.close(() => r()));
+    await new Promise<void>((r) => dead.close(() => { r(); }));
     const down = await start({ RAG_API_URL: deadUrl });
     const r1 = await post(down.base, { q: 'x', session_id: 's' });
     expect(r1.status).toBe(503);
@@ -243,7 +243,7 @@ describe('POST /api/query', () => {
     };
     const { base } = await start();
     const res = await post(base, { q: 'x', session_id: 's' });
-    await new Promise<void>((r) => evil.close(() => r()));
+    await new Promise<void>((r) => evil.close(() => { r(); }));
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(evilSeen).toEqual([]);
   });
@@ -330,7 +330,7 @@ describe('logging', () => {
     const { base } = await start();
     const secretQuestion = 'my-super-secret-question-text';
     const res = await post(base, { q: secretQuestion, session_id: 'logsess' }, { 'x-api-key': 'rag_attacker_key', authorization: 'Bearer zzz' });
-    const browserId = cookieOf(res).split('=')[1] as string;
+    const browserId = cookieOf(res).split('=')[1]!;
     await res.arrayBuffer();
     upstreamHandler = (_req, r) => {
       r.writeHead(401, { 'content-type': 'application/json' });
@@ -340,10 +340,10 @@ describe('logging', () => {
     await bad.arrayBuffer();
     const dump = JSON.stringify(logs);
     for (const needle of [KEY, 'rag_attacker_key', 'Bearer zzz', secretQuestion, browserId, 'logsess']) expect(dump).not.toContain(needle);
-    const failed = logs.filter((l) => l['msg'] === 'request' && l['status'] === 401);
+    const failed = logs.filter((l) => l.msg === 'request' && l.status === 401);
     expect(failed).toHaveLength(1);
-    expect(failed[0]?.['note']).toMatch(/BFF_RAG_API_KEY/);
-    expect(failed[0]?.['upstream_status']).toBe(401);
+    expect(failed[0]?.note).toMatch(/BFF_RAG_API_KEY/);
+    expect(failed[0]?.upstream_status).toBe(401);
   });
 });
 
@@ -358,8 +358,8 @@ describe('GET /api/health and /healthz', () => {
     const h = await fetch(`${base}/api/health`);
     expect(h.status).toBe(200);
     expect(await h.json()).toEqual({ ok: true, bff: 'ok', upstream: 'ready' });
-    expect((seen[0] as Seen).url).toBe('/readyz');
-    expect((seen[0] as Seen).headers['x-api-key']).toBeUndefined();
+    expect((seen[0]!).url).toBe('/readyz');
+    expect((seen[0]!).headers['x-api-key']).toBeUndefined();
     await (await fetch(`${base}/api/health`)).arrayBuffer();
     expect(seen).toHaveLength(1); // cached
     t += 4000;
@@ -390,7 +390,7 @@ describe('static files and security headers', () => {
     expect(res.headers.get('content-type')).toContain('text/html');
     expect(res.headers.get('cache-control')).toBe('no-cache');
     expect(res.headers.get('set-cookie')).toMatch(/HttpOnly/);
-    const csp = res.headers.get('content-security-policy') as string;
+    const csp = res.headers.get('content-security-policy')!;
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain('unsafe-inline');
@@ -477,7 +477,7 @@ async function rawRequest(port: number, request: string): Promise<string> {
     const sock = net.connect(port, '127.0.0.1', () => sock.write(request));
     let data = '';
     sock.on('data', (c: Buffer) => (data += c.toString('utf8')));
-    sock.on('end', () => resolve(data));
+    sock.on('end', () => { resolve(data); });
     sock.on('error', reject);
     sock.setTimeout(5000, () => {
       sock.destroy();

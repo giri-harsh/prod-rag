@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 
 // In dev, the Vite server proxies /api to the BFF (npm run start, default port 8787) so cookies and same-origin rules behave
 // exactly as in production. Override with BFF_DEV_TARGET if the BFF listens elsewhere.
-const bff = process.env['BFF_DEV_TARGET'] ?? 'http://127.0.0.1:8787';
+const bff = process.env.BFF_DEV_TARGET ?? 'http://127.0.0.1:8787';
 
 export default defineConfig({
   plugins: [react()],

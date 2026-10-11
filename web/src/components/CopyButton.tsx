@@ -17,6 +17,10 @@ export async function copyText(text: string): Promise<boolean> {
     area.className = 'sr-only';
     document.body.appendChild(area);
     area.select();
+    // Deliberate legacy fallback, reached only when navigator.clipboard is unavailable - which is exactly the
+    // case this branch exists for (no Clipboard API, or a non-secure context). Deprecated but still the only
+    // thing that works there, so the deprecation warning is suppressed rather than the fallback removed.
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
     const ok = document.execCommand('copy');
     area.remove();
     return ok;

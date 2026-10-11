@@ -246,7 +246,7 @@ export function createBff(config, deps = {}) {
     }
     if (!healthCache || now() - healthCache.at > HEALTH_CACHE_MS) {
       /** @type {'ready' | 'not_ready' | 'unreachable'} */
-      let upstream = 'unreachable';
+      let upstream;  // assigned on every path below; an initial value here would always be dead
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), HEALTH_TIMEOUT_MS);
       try {

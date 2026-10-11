@@ -1,0 +1,10 @@
+// Same reason as test/tsconfig.json: typescript-eslint's project service resolves a file by walking UP for
+// the nearest tsconfig.json, and web/tsconfig.json only includes "src". Without this the e2e specs lint as
+// "not found by the project service" and the type-aware rules silently skip them.
+{
+  "extends": "../tsconfig.node.json",
+  // DOM on top of the Node libs: these specs run in Node, but page.evaluate() callbacks are compiled as
+  // browser code and touch document/localStorage.
+  "compilerOptions": { "lib": ["ES2023", "DOM"] },
+  "include": ["."]
+}

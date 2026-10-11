@@ -79,14 +79,18 @@ export function deleteSession(state: SessionsState, id: string, freshId: string,
   const sessions = state.sessions.filter((s) => s.id !== id);
   if (sessions.length === 0) return initialState(freshId, now);
   if (state.activeId !== id) return { sessions, activeId: state.activeId };
-  const next = sessions[Math.min(idx, sessions.length - 1)];
-  return { sessions, activeId: next ? next.id : (sessions[0] as SessionMeta).id };
+  // `sessions` is non-empty here (the length-0 case returned above), so this index is always in range.
+  // noUncheckedIndexedAccess cannot know that, and the honest way to say so is a safe fallback rather than a
+  // non-null assertion: if it somehow were empty, a fresh session is the correct degradation, not a crash.
+  const next = sessions[Math.min(idx, sessions.length - 1)] ?? sessions[0];
+  if (!next) return initialState(freshId, now);
+  return { sessions, activeId: next.id };
 }
 
 function isMeta(v: unknown): v is SessionMeta {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
-  return typeof r['id'] === 'string' && SESSION_ID_RE.test(r['id']) && typeof r['title'] === 'string' && typeof r['createdAt'] === 'number' && typeof r['started'] === 'boolean';
+  return typeof r.id === 'string' && SESSION_ID_RE.test(r.id) && typeof r.title === 'string' && typeof r.createdAt === 'number' && typeof r.started === 'boolean';
 }
 
 /** Never throws: unreadable, tampered or missing data yields a single fresh session. */
@@ -98,14 +102,14 @@ export function loadState(storage: ReadableStorage | null, freshId: string, now:
       if (typeof parsed === 'object' && parsed !== null) {
         const rec = parsed as Record<string, unknown>;
         const seen = new Set<string>();
-        const sessions = (Array.isArray(rec['sessions']) ? (rec['sessions'] as unknown[]) : [])
+        const sessions = (Array.isArray(rec.sessions) ? (rec.sessions as unknown[]) : [])
           .filter(isMeta)
           .filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)))
           .slice(0, MAX_SESSIONS)
           .map((s) => ({ id: s.id, title: cleanTitle(s.title), createdAt: s.createdAt, started: s.started }));
         const first = sessions[0];
         if (first) {
-          const active = typeof rec['activeId'] === 'string' && seen.has(rec['activeId']) ? rec['activeId'] : first.id;
+          const active = typeof rec.activeId === 'string' && seen.has(rec.activeId) ? rec.activeId : first.id;
           return { sessions, activeId: active };
         }
       }

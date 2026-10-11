@@ -101,7 +101,10 @@ export function describeError(err: unknown, maxChars: number): UiError {
         title: 'The assistant refused this web app’s credentials',
         detail:
           'The service key configured on the web server was rejected by the API (HTTP 401). This is a server configuration problem and retrying will not help until an administrator fixes it (BFF_RAG_API_KEY).',
-        canRetry: true,
+        // false, to match what the message says. This was `true`, so the banner offered a "Try again" button
+        // directly underneath the sentence "retrying will not help" - and pressing it re-sent a request that
+        // could only fail the same way, because the rejected credential is the server's, not the user's.
+        canRetry: false,
       };
     case 'rate_limited':
       return {

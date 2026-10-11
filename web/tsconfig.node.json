@@ -21,5 +21,8 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["server", "test", "e2e", "vite.config.ts", "playwright.config.ts", "eslint.config.js"]
+  // "test" and "e2e" are NOT listed here: each has its own tsconfig.json so typescript-eslint's project
+  // service can find it by walking up, and e2e additionally needs the DOM lib for page.evaluate callbacks.
+  // `npm run typecheck` builds all four projects.
+  "include": ["server", "vite.config.ts", "playwright.config.ts", "eslint.config.js"]
 }

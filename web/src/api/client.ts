@@ -36,20 +36,20 @@ function strings(v: unknown): string[] {
 
 /** Validate the BFF's success body. Anything unexpected is an error, never a half-rendered answer. */
 export function parseAnswer(data: unknown): QueryAnswer {
-  if (!isRecord(data) || typeof data['answer'] !== 'string') {
+  if (!isRecord(data) || typeof data.answer !== 'string') {
     throw new ApiError('unknown', 'The server returned an answer in an unexpected format.');
   }
-  const iterations = data['iterations'];
+  const iterations = data.iterations;
   return {
-    answer: data['answer'],
-    sessionId: typeof data['session_id'] === 'string' ? data['session_id'] : '',
-    sources: strings(data['sources']),
-    thoughtProcess: strings(data['thought_process']),
-    status: typeof data['status'] === 'string' ? data['status'] : null,
-    blocked: data['blocked'] === true,
-    cacheHit: data['cache_hit'] === true,
+    answer: data.answer,
+    sessionId: typeof data.session_id === 'string' ? data.session_id : '',
+    sources: strings(data.sources),
+    thoughtProcess: strings(data.thought_process),
+    status: typeof data.status === 'string' ? data.status : null,
+    blocked: data.blocked === true,
+    cacheHit: data.cache_hit === true,
     iterations: typeof iterations === 'number' && Number.isFinite(iterations) ? iterations : 0,
-    requestId: typeof data['request_id'] === 'string' ? data['request_id'] : null,
+    requestId: typeof data.request_id === 'string' ? data.request_id : null,
   };
 }
 
@@ -62,14 +62,14 @@ export async function errorFromResponse(res: Response, nowMs: number): Promise<A
     /* not JSON (proxy error page, etc.) */
   }
   const rec = isRecord(body) ? body : {};
-  const bodyRetry = typeof rec['retry_after'] === 'number' && Number.isFinite(rec['retry_after']) ? Math.max(1, Math.ceil(rec['retry_after'])) : null;
+  const bodyRetry = typeof rec.retry_after === 'number' && Number.isFinite(rec.retry_after) ? Math.max(1, Math.ceil(rec.retry_after)) : null;
   const retryAfter = parseRetryAfter(res.headers.get('retry-after'), nowMs) ?? bodyRetry;
-  const message = typeof rec['error'] === 'string' && rec['error'] !== '' ? rec['error'] : `The server answered with HTTP ${String(res.status)}.`;
+  const message = typeof rec.error === 'string' && rec.error !== '' ? rec.error : `The server answered with HTTP ${String(res.status)}.`;
   return new ApiError(kindForStatus(res.status), message, {
     status: res.status,
     retryAfter,
-    requestId: typeof rec['request_id'] === 'string' ? rec['request_id'] : (res.headers.get('x-request-id') ?? null),
-    code: typeof rec['code'] === 'string' ? rec['code'] : null,
+    requestId: typeof rec.request_id === 'string' ? rec.request_id : (res.headers.get('x-request-id') ?? null),
+    code: typeof rec.code === 'string' ? rec.code : null,
   });
 }
 
@@ -78,9 +78,7 @@ export async function sendQuery(q: string, sessionId: string, opts: SendOptions 
   const doFetch = opts.fetchImpl ?? fetch;
   const now = opts.now ?? Date.now;
   const timeout = new AbortController();
-  let timedOut = false;
   const timer = setTimeout(() => {
-    timedOut = true;
     timeout.abort();
   }, opts.timeoutMs ?? CLIENT_TIMEOUT_MS);
   const onAbort = () => {
@@ -101,6 +99,12 @@ export async function sendQuery(q: string, sessionId: string, opts: SendOptions 
       });
     } catch (e) {
       if (opts.signal?.aborted) throw e; // the caller cancelled: let AbortError through untouched
+      // Read the deadline off our own controller rather than a `timedOut` flag set inside the timer callback.
+      // Reaching this line means the caller did NOT abort, so if our controller is aborted the timer is the
+      // only thing that could have done it. The flag was correct at runtime but TypeScript does not track
+      // assignments made inside a callback, so it narrowed it to `false` forever and both branches below were
+      // typed as dead code - the sort of unsound narrowing that silently survives a refactor.
+      const timedOut = timeout.signal.aborted;
       throw new ApiError('network', timedOut ? 'The request timed out.' : 'The server could not be reached.', { code: timedOut ? 'client_timeout' : 'network' });
     }
     if (!res.ok) throw await errorFromResponse(res, now());
@@ -164,7 +168,7 @@ export async function fetchHealth(opts: { signal?: AbortSignal; fetchImpl?: type
   try {
     const res = await (opts.fetchImpl ?? fetch)('/api/health', { credentials: 'same-origin', ...(opts.signal ? { signal: opts.signal } : {}) });
     const body: unknown = await res.json().catch(() => null);
-    const upstream = isRecord(body) ? body['upstream'] : undefined;
+    const upstream = isRecord(body) ? body.upstream : undefined;
     if (upstream === 'ready') return 'ready';
     if (upstream === 'not_ready') return 'not_ready';
     return res.ok ? 'ready' : 'unreachable';

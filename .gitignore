@@ -99,3 +99,4 @@ docker_query.json
 # headless eval intermediates (live answers and the phase-2 resume file, regenerated on every run)
 evals/.phase1.json
 evals/.phase2_checkpoint.json
+web/e2e/.logs/

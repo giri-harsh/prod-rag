@@ -1,0 +1,9 @@
+// typescript-eslint's project service resolves each file by walking UP for the nearest tsconfig.json. From
+// test/ that is web/tsconfig.json, which only includes "src" - so every test file linted as "not found by the
+// project service" and the type-aware rules silently did not run on them. Listing "test" in
+// tsconfig.node.json is not enough, because nothing walks sideways into it. This config is what the walk
+// finds.
+{
+  "extends": "../tsconfig.node.json",
+  "include": ["."]
+}
