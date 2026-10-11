@@ -107,16 +107,64 @@ def kill_service(name: str) -> dict:
         try:
             proc = psutil.Process(pid)
             victims = [*proc.children(recursive=True), proc]  # children first: a parent's death can orphan them
+            # Read the identity BEFORE killing: proc.name() on a dead process raises NoSuchProcess, which this
+            # very except clause then filed under "failed" - so a kill that worked (port closed, service down)
+            # was reported as having killed nothing.
+            record = {"pid": pid, "name": proc.name(), "children": len(victims) - 1}
             for v in victims:
                 with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
                     v.kill()
-            psutil.wait_procs(victims, timeout=15)
-            killed.append({"pid": pid, "name": proc.name(), "children": len(victims) - 1})
+            gone, alive = psutil.wait_procs(victims, timeout=15)
+            record["survivors"] = [p.pid for p in alive]
+            (failed if alive else killed).append(record)
         except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
             failed.append({"pid": pid, "error": type(e).__name__})
     down = wait_port(port, up=False, timeout=30)
     return {"action": "kill", "service": name, "expected_exe": exe, "killed": killed, "failed": failed,
             "port_closed": down}
+
+
+def api_family(pid: int) -> list[int]:
+    """The API's pid plus its descendants.
+
+    `.venv/Scripts/python.exe` is a launcher: it re-execs the real interpreter as a CHILD, so the process that
+    actually holds the API port is not the pid Popen returned (measured on this machine - Popen pid 19204,
+    LISTEN socket owned by 19512). Anything reasoning about "the API process" has to mean the whole tree.
+    """
+    import psutil
+
+    out = [pid]
+    with contextlib.suppress(Exception):
+        out += [c.pid for c in psutil.Process(pid).children(recursive=True)]
+    return out
+
+
+def stop_api(api: subprocess.Popen, port: int) -> None:
+    """Tear the API down by tree, not just the launcher.
+
+    `api.terminate()` on Windows is TerminateProcess on the launcher only, which ORPHANS the real uvicorn
+    process: it keeps the port, the Postgres pool and the Redis connections after the drill exits, so the next
+    run finds port 8099 taken and blames it on itself.
+    """
+    import psutil
+
+    pids = api_family(api.pid)
+    procs = []
+    for pid in pids:
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            procs.append(psutil.Process(pid))
+    for p in reversed(procs):  # children first
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            p.terminate()
+    _, alive = psutil.wait_procs(procs, timeout=15)
+    for p in alive:
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            p.kill()
+    psutil.wait_procs(alive, timeout=10)
+    with contextlib.suppress(Exception):
+        api.wait(timeout=10)
+    if not wait_port(port, up=False, timeout=15):
+        print(f"chaos: warning - something is still listening on {port} after shutdown", file=sys.stderr)
 
 
 def start_service(name: str) -> dict:
@@ -216,7 +264,18 @@ async def run(a) -> int:
             await phase(out, client, keys, "baseline", a.phase_s)
 
             for name in ([] if a.no_kill else targets):
-                out["events"].append(kill_service(name))
+                ev = kill_service(name)
+                out["events"].append(ev)
+                if not ev["port_closed"]:
+                    # The dependency is still serving, so a "{name}_down" phase would measure a healthy system
+                    # and every degradation verdict would FAIL - reading as an app deviation when the harness is
+                    # what broke (e.g. psutil could not see the owning pid, so nothing was killed).
+                    out["aborted"] = {"service": name, "why": "could not close the port; nothing was measured",
+                                      "event": ev}
+                    print(f"chaos: {name} still listening on {SERVICES[name][0]} after the kill "
+                          f"(killed={ev['killed']} failed={ev['failed']}); aborting rather than reporting "
+                          f"phantom deviations", file=sys.stderr)
+                    return 2
                 await phase(out, client, keys, f"{name}_down", a.phase_s)
                 out["events"].append(start_service(name))
                 # give the dependency a moment to accept connections before judging recovery
@@ -226,19 +285,13 @@ async def run(a) -> int:
         # The central claim of the drill is that the API process is never restarted, so check it rather than
         # restating that it is alive: the pid launched at boot must still be the one holding the port (or one of
         # its own children), which also catches a supervisor quietly swapping in a new process.
-        import psutil
-
         out["api_still_running"] = api.poll() is None
-        family = {api.pid}
-        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
-            family |= {c.pid for c in psutil.Process(api.pid).children(recursive=True)}
+        out["api_family_pids"] = api_family(api.pid)
         out["api_listener_pids"] = listening_pids(a.port)
         out["api_pid_unchanged"] = (out["api_still_running"] and bool(out["api_listener_pids"])
-                                    and set(out["api_listener_pids"]) <= family)
+                                    and set(out["api_listener_pids"]) <= set(out["api_family_pids"]))
     finally:
-        api.terminate()
-        with contextlib.suppress(Exception):
-            api.wait(timeout=20)
+        stop_api(api, a.port)
 
     out["verdicts"] = verdicts(out)
     pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
@@ -328,8 +381,11 @@ def verdicts(out: dict) -> list[dict]:
         add(f"{name} recovered: readiness returns", p["readyz"].get("status") == 200,
             f"readyz={p['readyz'].get('status')}")
 
-    add("the API process was never restarted", out.get("api_still_running") is True,
-        f"pid {out.get('api_pid')} alive at the end: {out.get('api_still_running')}")
+    # "alive at the end" is true of any process; the claim is that the pid booted before the chaos is still the
+    # one serving, so the check is api_pid_unchanged (booted pid or its own children still hold the port).
+    add("the API process was never restarted", out.get("api_pid_unchanged") is True,
+        f"booted pid {out.get('api_pid')}, alive={out.get('api_still_running')}, "
+        f"listeners={out.get('api_listener_pids')}")
     return v
 
 
