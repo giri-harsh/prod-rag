@@ -228,6 +228,54 @@ async def drive(client, key: str, seconds: float, stats: dict) -> None:
         await asyncio.sleep(0.25)
 
 
+async def wait_ready(client, admin_key: str, budget_s: float, interval: float = 2.0) -> tuple[float | None, dict]:
+    """Poll /readyz until it reports 200. Returns (seconds_to_ready or None if the budget ran out, last probe).
+
+    Recovery is a duration, not an instant. The drill used to sleep a flat 3 s after restarting a dependency
+    and then take ONE readiness snapshot, which reported "postgres recovered: readiness returns" as a FAILURE
+    while the app was in fact fine: psycopg's pool needs a few seconds to replace the connections the restart
+    broke, and measurement at t+3 s simply landed inside that window (measured separately: readiness came back
+    at t+6.1 s). Sampling once cannot tell "never recovers" apart from "had not recovered yet", so the drill
+    now measures how long recovery takes and judges that against a budget.
+    """
+    t0 = time.perf_counter()
+    last: dict = {}
+    while True:
+        last = await probe_ready(client, admin_key)
+        elapsed = time.perf_counter() - t0
+        if last["status"] == 200:
+            return round(elapsed, 1), last
+        if elapsed >= budget_s:
+            return None, last
+        await asyncio.sleep(interval)
+
+
+async def wait_serving(client, key: str, budget_s: float, interval: float = 1.0) -> tuple[float | None, int | None]:
+    """Poll /query until it answers 200. Returns (seconds to the first 200 or None, last status code).
+
+    Readiness coming back does not mean traffic is being served. The circuit breaker (app/resilience.py) opens
+    after `breaker_failures` consecutive failures and only goes half-open `breaker_reset_s` (30 s) after it
+    opened, then admits a single probe - so after Qdrant returns, /query keeps shedding load for the remainder
+    of that window even though /readyz pings Qdrant successfully in 0.1 s. Measured: 15 further 503s before the
+    first 200. That is the breaker working as designed, but a fixed-length "recovered" phase shorter than the
+    reset window can only ever see it as "traffic did not return".
+    """
+    t0 = time.perf_counter()
+    code = None
+    while True:
+        try:
+            r = await client.post("/query", json={"q": QUESTIONS[0], "session_id": "chaos-recovery"},
+                                  headers={"X-API-Key": key}, timeout=30)
+            code = r.status_code
+            if code == 200:
+                return round(time.perf_counter() - t0, 1), code
+        except Exception:  # noqa: BLE001 - a transport failure is just "not serving yet"
+            code = None
+        if time.perf_counter() - t0 >= budget_s:
+            return None, code
+        await asyncio.sleep(interval)
+
+
 async def probe_ready(client, admin_key: str) -> dict:
 
     try:
@@ -256,7 +304,8 @@ async def run(a) -> int:
     import httpx
 
     out: dict = {"run_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-                 "phase_seconds": a.phase_s, "phases": [], "events": []}
+                 "phase_seconds": a.phase_s, "recover_budget_s": a.recover_budget_s,
+                 "phases": [], "events": [], "recovery": {}, "traffic_recovery": {}}
 
     # --- preconditions ----------------------------------------------------------------------------
     for name, (port, _, _) in SERVICES.items():
@@ -341,8 +390,18 @@ async def run(a) -> int:
                     print(f"chaos: {name} did not come back on {SERVICES[name][0]} after the restart "
                           f"(see {api_log.parent / f'start_{name}.log'}); aborting", file=sys.stderr)
                     return 2
-                # give the dependency a moment to accept connections before judging recovery
-                await asyncio.sleep(3)
+                # Measure how long the app takes to call itself ready again, rather than sleeping a flat 3s
+                # and hoping that was long enough (it was not, for postgres).
+                secs, last = await wait_ready(client, keys["admin"], a.recover_budget_s)
+                out["recovery"][name] = secs
+                # Then wait for traffic, separately: readiness and "actually serving" recover at different
+                # times, because the breaker keeps shedding load after the dependency itself is healthy.
+                served, code = await wait_serving(client, keys["tenant_key"], a.recover_budget_s)
+                out["traffic_recovery"][name] = served
+                out["events"].append({"action": "await_ready", "service": name, "ready_after_s": secs,
+                                      "first_200_after_s": served, "last_status": code,
+                                      "budget_s": a.recover_budget_s, "last_probe": last})
+                print(f"chaos: {name} readiness back after {secs}s, first 200 after {served}s", flush=True)
                 await phase(out, client, keys, f"{name}_recovered", a.phase_s)
 
         # The central claim of the drill is that the API process is never restarted, so check it rather than
@@ -365,6 +424,13 @@ async def run(a) -> int:
         s = p["query"]
         print(f"  {p['name']:22} {s['ok_pct']:5.1f}% 200  status={s['status']} "
               f"retry_after={s['retry_after'] or '-'}  readyz={p['readyz'].get('status')}")
+    if out.get("recovery"):
+        print(f"\n  recovery after each restart (budget {a.recover_budget_s}s):")
+        print(f"    {'service':10} {'/readyz 200':>12} {'first /query 200':>18}")
+        for name, secs in out["recovery"].items():
+            served = out["traffic_recovery"].get(name)
+            fmt = (lambda v: f"{v}s" if v is not None else "never")  # noqa: E731 - local formatting shorthand
+            print(f"    {name:10} {fmt(secs):>12} {fmt(served):>18}")
     print(f"\n  API process survived the whole drill: {out.get('api_still_running')}")
     bad = [v for v in out["verdicts"] if not v["pass"]]
     for v in out["verdicts"]:
@@ -440,9 +506,22 @@ def verdicts(out: dict) -> list[dict]:
         p = by.get(f"{name}_recovered")
         if not p:
             continue
-        add(f"{name} recovered: traffic returns", p["query"]["ok_pct"] >= 95, f"{p['query']['ok_pct']}% 200")
-        add(f"{name} recovered: readiness returns", p["readyz"].get("status") == 200,
-            f"readyz={p['readyz'].get('status')}")
+        # Traffic recovery is a duration too, and a different one from readiness: the breaker keeps shedding
+        # load for the rest of its reset window after the dependency is healthy again. Judging only the ok_pct
+        # of a fixed 20 s phase made Qdrant's designed breaker cooldown look like a failure to recover.
+        served = (out.get("traffic_recovery") or {}).get(name)
+        add(f"{name} recovered: traffic returns",
+            served is not None and p["query"]["ok_pct"] >= 95,
+            f"first 200 after {served}s, then {p['query']['ok_pct']}% 200" if served is not None
+            else f"no 200 within {out.get('recover_budget_s')}s; phase was {p['query']['ok_pct']}% 200")
+        # Judged as a duration against a budget. A single snapshot could not distinguish "never recovers" from
+        # "has not recovered yet", and reported the app as broken for being 3 s short of ready.
+        budget = out.get("recover_budget_s")
+        secs = (out.get("recovery") or {}).get(name)
+        add(f"{name} recovered: readiness returns",
+            secs is not None and p["readyz"].get("status") == 200,
+            f"readyz returned to 200 after {secs}s (budget {budget}s)" if secs is not None
+            else f"readiness never returned within {budget}s; last readyz={p['readyz'].get('status')}")
 
     # "alive at the end" is true of any process; the claim is that the pid booted before the chaos is still the
     # one serving, so the check is api_pid_unchanged (booted pid or its own children still hold the port).
@@ -461,6 +540,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="_night/q6/chaos_result.json")
     ap.add_argument("--phase-s", type=float, default=20.0)
+    ap.add_argument("--recover-budget-s", type=float, default=60.0,
+                    help="how long a dependency's recovery may take before readiness returning counts as failed")
     ap.add_argument("--port", type=int, default=8099)
     ap.add_argument("--collection", default="loadtest_rag")
     ap.add_argument("--only", default="", choices=["", "redis", "qdrant", "postgres"])

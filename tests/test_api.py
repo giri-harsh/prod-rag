@@ -365,6 +365,66 @@ async def test_readyz_fails_fast_when_a_dependency_hangs(make_app, new_key):
         assert r.json()["checks"]["postgres"] == "ok"
 
 
+async def test_readyz_answers_even_when_the_keystore_lookup_hangs(make_app, new_key):
+    """/readyz must answer during a Postgres outage - that is the outage it exists to report.
+
+    The chaos drill recorded readyz=None (no response inside the client's 15 s) while Postgres was down. The
+    ready/not-ready decision was already bounded, but the admin-key lookup that authorises the per-dependency
+    detail is itself a Postgres read and was unbounded, so it blocked on the pool for the pool's full timeout.
+    """
+    import asyncio
+    import time
+
+    async with make_app() as e:
+        _, ak = new_key(admin=True)
+
+        async def hangs(_raw):
+            await asyncio.sleep(300)
+
+        e.svc.keystore.lookup = hangs
+        e.svc.settings.readiness_probe_timeout_s = 0.2
+        t0 = time.perf_counter()
+        r = await e.client.get("/readyz", headers=H(ak))
+        elapsed = time.perf_counter() - t0
+
+        assert r.status_code == 200, r.text  # dependencies are healthy; only the detail lookup is broken
+        assert elapsed < 10, f"/readyz took {elapsed:.1f}s; the admin lookup is not bounded"
+        assert r.json()["ready"] is True
+        assert "checks" not in r.json(), "the detail must be dropped, not waited for"
+
+
+async def test_readyz_probes_run_concurrently_not_in_sequence(make_app, new_key):
+    """The endpoint's worst case must be the slowest probe, not the sum of all of them.
+
+    Four sequential probes at readiness_probe_timeout_s each gave /readyz a 4x worst case, which is how it
+    blew past a client timeout while every individual probe was correctly bounded.
+    """
+    import asyncio
+    import time
+
+    class Hangs:
+        async def ping(self):
+            await asyncio.sleep(300)
+
+        async def verify_config(self):
+            await asyncio.sleep(300)
+
+    async with make_app() as e:
+        _, ak = new_key(admin=True)
+        e.svc.redis = Hangs()
+        e.svc.vectors = Hangs()
+        e.svc.settings.readiness_probe_timeout_s = 1.0
+        t0 = time.perf_counter()
+        r = await e.client.get("/readyz", headers=H(ak))
+        elapsed = time.perf_counter() - t0
+
+        assert r.status_code == 503, r.text
+        checks = r.json()["checks"]
+        assert all("timeout" in checks[n] for n in ("redis", "qdrant", "embedding_config")), checks
+        # three probes hang for 1s each: ~1s concurrently, ~3s sequentially
+        assert elapsed < 2.5, f"/readyz took {elapsed:.1f}s for 3 hanging 1s probes; they are running serially"
+
+
 async def test_startup_refuses_an_event_loop_psycopg_cannot_use(monkeypatch):
     """Windows-only guard: fail at startup instead of serving traffic with every DB call broken.
 

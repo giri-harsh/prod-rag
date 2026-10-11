@@ -280,10 +280,14 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
             async with svc.pool.connection() as c:
                 await c.execute("SELECT 1 FROM api_keys LIMIT 1")
 
-        await probe("postgres", pg())
-        await probe("redis", svc.redis.ping())
-        await probe("qdrant", svc.vectors.ping())
-        await probe("embedding_config", svc.vectors.verify_config())
+        # Concurrently, not one after another: the probes are independent, and running them in sequence made
+        # the endpoint's worst case the SUM of the per-probe budgets (4 x 3 s) instead of the longest one.
+        await asyncio.gather(
+            probe("postgres", pg()),
+            probe("redis", svc.redis.ping()),
+            probe("qdrant", svc.vectors.ping()),
+            probe("embedding_config", svc.vectors.verify_config()),
+        )
         checks["guardrails"] = "ok" if svc.guard.ready else "fail: not initialised"
         ok = all(v == "ok" for v in checks.values())
         READY.set(1 if ok else 0)  # exported so alerts see readiness without an admin key
@@ -292,11 +296,19 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         body: dict = {"ready": ok}
         raw = request.headers.get("x-api-key")
         if raw:
-            p = await svc.keystore.lookup(raw)
-            if p and p.is_admin:
-                body["checks"] = checks
-                if not svc.guard.ready:
-                    body["guardrails_error"] = svc.guard.init_error
+            # Bounded, and tolerant of its own failure. This lookup reads Postgres, so when Postgres is the
+            # dependency that is down it blocked on the pool for the pool's full timeout and /readyz could not
+            # answer AT ALL - the chaos drill recorded no response inside the client's 15 s, during the exact
+            # outage the endpoint exists to report. The ready/not-ready decision above never needed this call;
+            # it only authorises the per-dependency detail. Losing that detail is acceptable, losing the
+            # endpoint is not.
+            with contextlib.suppress(Exception):
+                p = await asyncio.wait_for(svc.keystore.lookup(raw),
+                                           timeout=svc.settings.readiness_probe_timeout_s)
+                if p and p.is_admin:
+                    body["checks"] = checks
+                    if not svc.guard.ready:
+                        body["guardrails_error"] = svc.guard.init_error
         return JSONResponse(body, 200 if ok else 503)
 
     @app.post("/query")

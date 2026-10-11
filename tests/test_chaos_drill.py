@@ -245,7 +245,9 @@ def test_start_service_never_pipes_the_restart_command():
 
 def _out(**kw) -> dict:
     base = {"api_pid": 4242, "api_still_running": True, "api_pid_unchanged": True,
-            "api_listener_pids": [4242], "phases": []}
+            "api_listener_pids": [4242], "phases": [], "recover_budget_s": 60.0,
+            "recovery": {"redis": 1.0, "qdrant": 2.0, "postgres": 6.1},
+            "traffic_recovery": {"redis": 1.0, "qdrant": 12.0, "postgres": 7.0}}
     return {**base, **kw}
 
 
@@ -302,3 +304,60 @@ def test_degradation_verdicts_match_the_documented_design():
 
     still_ready = _out(phases=[phase("qdrant_down", {"503": 40}, retry_after={"5": 1}, readyz=200, ok_pct=0.0)])
     assert _verdict(still_ready, "qdrant down: readiness fails")["pass"] is False
+
+
+def test_recovery_verdict_is_a_duration_against_a_budget_not_one_snapshot():
+    """"readiness returns" must mean "returned within the budget", and must report how long it took.
+
+    The first completed drill reported `postgres recovered: readiness returns` as a FAILURE while the
+    application was healthy: the old check took a single readiness snapshot a flat 3 s after the restart, and
+    psycopg's pool needs a few seconds to replace the connections the restart broke (measured: readiness came
+    back at t+6.1 s). One sample cannot tell "never recovers" from "has not recovered yet", which is the
+    difference between a production defect and a harness that measured too early.
+    """
+    def phase(name, readyz=200):
+        return {"name": name, "query": {"status": {"200": 40}, "retry_after": {}, "ok_pct": 100.0},
+                "readyz": {"status": readyz, "checks": {}}}
+
+    # recovered, slowly but inside the budget -> PASS, and the measured time is reported
+    slow = _out(phases=[phase("postgres_recovered")], recovery={"postgres": 6.1})
+    v = _verdict(slow, "postgres recovered: readiness returns")
+    assert v["pass"] is True, "a dependency that recovered in 6.1s of a 60s budget must pass"
+    assert "6.1" in v["detail"], v
+
+    # never came back inside the budget -> FAIL, and says so
+    never = _out(phases=[phase("postgres_recovered", readyz=503)], recovery={"postgres": None})
+    v = _verdict(never, "postgres recovered: readiness returns")
+    assert v["pass"] is False
+    assert "never returned" in v["detail"], v
+
+
+def test_traffic_recovery_tolerates_the_breaker_cooldown_but_not_a_dead_service():
+    """Traffic recovery is measured as time-to-first-200, not the ok_pct of a fixed-length phase.
+
+    After Qdrant came back, /readyz pinged it fine in 0.1 s while /query kept returning 503 for 15 more
+    requests: the circuit breaker only goes half-open breaker_reset_s (30 s) after it opened. The 20 s
+    "recovered" phase sat inside that window, so the designed cooldown scored as "qdrant recovered: traffic
+    returns - 40.0% 200", i.e. a load-shedding feature reported as a defect. The budget has to exceed
+    breaker_reset_s, and a service that truly never serves again must still fail.
+    """
+    def phase(name, ok_pct, status):
+        return {"name": name, "query": {"status": status, "retry_after": {}, "ok_pct": ok_pct},
+                "readyz": {"status": 200, "checks": {}}}
+
+    # recovered after the breaker cooldown, then steady -> PASS, with the measured delay reported
+    slow = _out(phases=[phase("qdrant_recovered", 100.0, {"200": 30})], traffic_recovery={"qdrant": 12.0})
+    v = _verdict(slow, "qdrant recovered: traffic returns")
+    assert v["pass"] is True, "a breaker cooldown inside the budget is designed behaviour, not a deviation"
+    assert "12.0" in v["detail"], v
+
+    # never served again inside the budget -> FAIL
+    dead = _out(phases=[phase("qdrant_recovered", 0.0, {"503": 30})], traffic_recovery={"qdrant": None})
+    v = _verdict(dead, "qdrant recovered: traffic returns")
+    assert v["pass"] is False
+    assert "no 200 within" in v["detail"], v
+
+    # recovered once, then went bad again during the phase -> FAIL (the phase still has to be healthy)
+    flapping = _out(phases=[phase("qdrant_recovered", 50.0, {"200": 15, "503": 15})],
+                    traffic_recovery={"qdrant": 2.0})
+    assert _verdict(flapping, "qdrant recovered: traffic returns")["pass"] is False
