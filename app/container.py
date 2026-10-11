@@ -61,12 +61,16 @@ async def build_services(s: Settings, overrides: dict | None = None) -> Services
 
     pool = AsyncConnectionPool(
         s.database_url, min_size=1, max_size=int(ov.get("pg_pool_max", s.pg_pool_max)), open=False,
+        timeout=float(ov.get("pg_pool_timeout", s.pg_pool_timeout_s)),  # see Settings.pg_pool_timeout_s
         kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row, "connect_timeout": 5},
     )
     await pool.open()
     closers.append(pool.close)
 
-    redis = aioredis.from_url(s.redis_url)
+    # Explicit timeouts: see Settings.redis_connect_timeout_s. Without them an unreachable (as opposed to
+    # refusing) Redis blocks a request indefinitely, and a dead one cost ~2 s per call.
+    redis = aioredis.from_url(s.redis_url, socket_connect_timeout=s.redis_connect_timeout_s,
+                              socket_timeout=s.redis_socket_timeout_s)
     closers.append(redis.aclose)
 
     qclient = ov.get("qdrant_client") or make_client(s)

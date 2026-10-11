@@ -189,8 +189,10 @@ already in effect).
 "proceed unlocked" - two concurrent requests in one session can overwrite each other's history.
 **Check:** `kubectl get pods -l app=redis`, then `kubectl exec deploy/rag-api -- redis-cli -u $REDIS_URL ping`.
 **Act:** restore Redis. Nothing in the API needs restarting afterwards - the limiter and the caches reconnect on the
-next request (verified in the chaos drill, [15_CHAOS_DRILL.md](15_CHAOS_DRILL.md)). While it is down, expect higher
-token spend from cache misses.
+next request (verified in the chaos drill, [15_CHAOS_DRILL.md](15_CHAOS_DRILL.md): readiness back in 0.1 s, traffic in
+0.7 s, same API process). While it is down, expect higher token spend from cache misses, and **~5x latency**: the drill
+measured p50 386 ms -> 2,035 ms, because each of the ~8 independent Redis consumers in a request pays
+`REDIS_CONNECT_TIMEOUT_S` before falling back. Requests still succeed throughout.
 
 ### RagCircuitBreakerOpen
 

@@ -18,6 +18,7 @@ coordinated blue/green rebuild, Prometheus metrics (internal port) and PII-redac
 | load numbers in `DOCS/12_CAPACITY.md` | Locust against 4 uvicorn workers, real datastores + real BM25/FlashRank, **fake LLM/embeddings/guard model** (`APP_ENV=loadtest`), one laptop |
 | ruff, bandit, pip-audit clean; `kubeconform -strict` valid on `deploy/k8s/base` | local runs |
 | backup → **drop the live database** → restore → 1,798 rows back row-for-row, and 3/3 LangGraph threads reloaded through `AsyncPostgresSaver` | `scripts/backup_restore.sh` + `scripts/db_fingerprint.py` against local Postgres 16 ([DOCS/16](DOCS/16_POSTGRES_HA.md)) |
+| Redis, Qdrant and Postgres each **killed under load**: 16/16 degradation and recovery verdicts pass, API process never restarted. Redis down still serves 100% 200; Qdrant and Postgres down return 503 + `Retry-After` | `scripts/chaos_drill.py` against the local datastores, fake LLMs ([DOCS/15](DOCS/15_CHAOS_DRILL.md), [artifact](evals/chaos_drill_2026-10-11.json)) |
 
 | **NOT yet run** | how to run it |
 |---|---|
@@ -101,6 +102,6 @@ tests/                pytest suite (+ tests/live gated on keys)
 [07 FlashRank](DOCS/07_FLASHRANK_RERANKING.md) · [08 Guardrails](DOCS/08_GUARDRAILS.md) · [09 LLM Gateway](DOCS/09_LLM_GATEWAY.md) ·
 [10 Evals](DOCS/10_EVALS.md) · [11 Evals pipeline](DOCS/11_EVALS_PIPELINE.md) · [12 Capacity](DOCS/12_CAPACITY.md) ·
 [13 Retrieval eval](DOCS/13_RETRIEVAL_EVAL.md) · [14 SLOs and runbooks](DOCS/14_SLOS_AND_RUNBOOKS.md) ·
-[16 Postgres HA](DOCS/16_POSTGRES_HA.md) · [Architecture](ARCHITECTURE.md).
+[15 Chaos drill](DOCS/15_CHAOS_DRILL.md) · [16 Postgres HA](DOCS/16_POSTGRES_HA.md) · [Architecture](ARCHITECTURE.md).
 Docs 01-07 and 12 describe the current code. 08-11 open with a "current implementation" note; the long tutorial text below it is background material (guardrail/gateway/eval concepts) and
 may mention prototype details (e.g. `ChatGroq`, `MemorySaver`) that no longer apply.

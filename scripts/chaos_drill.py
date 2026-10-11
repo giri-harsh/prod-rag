@@ -532,7 +532,16 @@ def verdicts(out: dict) -> list[dict]:
 
 
 def _check(phase: dict, dep: str) -> str:
-    checks = phase.get("readyz", {}).get("checks") or {}
+    """The per-dependency readiness detail, or why there is none.
+
+    An empty `checks` is expected while Postgres is down: the detail is only shown to admin keys, that lookup
+    is a Postgres read, and it is deliberately bounded and skipped rather than allowed to hang the endpoint
+    (app/api.py:readyz). Printing a bare "?" made correct behaviour look like missing data.
+    """
+    body = phase.get("readyz", {})
+    checks = body.get("checks") or {}
+    if not checks:
+        return f"{dep}=<no detail: the admin lookup reads postgres and is bounded>, ready={body.get('ready')}"
     return f"{dep}={checks.get(dep, '?')}"
 
 

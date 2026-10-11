@@ -365,6 +365,43 @@ async def test_readyz_fails_fast_when_a_dependency_hangs(make_app, new_key):
         assert r.json()["checks"]["postgres"] == "ok"
 
 
+async def test_postgres_outage_is_a_503_with_retry_after_not_a_500(make_app, new_key):
+    """A Postgres outage must answer like a Qdrant outage: 503 + Retry-After, not a generic 500.
+
+    The chaos drill measured /query returning 500 "internal server error" with no Retry-After during the
+    Postgres phase, because psycopg_pool.PoolTimeout escaped unhandled - while the equivalent Qdrant phase
+    returned 503 + Retry-After: 5 in under a second. PoolTimeout subclasses psycopg.OperationalError, which is
+    what the handler keys on, so this covers a dropped connection mid-query too.
+    """
+    from psycopg_pool import PoolTimeout
+
+    _, k = new_key()
+    async with make_app() as e:
+        class Dead:
+            def connection(self, *a, **kw):
+                raise PoolTimeout("couldn't get a connection after 30.00 sec")
+
+        e.svc.pool = Dead()
+        r = await e.client.post("/query", json={"q": "what is a CronJob?"}, headers=H(k))
+
+        assert r.status_code == 503, f"got {r.status_code}: {r.text}"
+        assert r.headers.get("Retry-After") == "5", dict(r.headers)
+        assert "internal" not in r.json()["error"].lower(), r.json()
+        assert "request_id" in r.json()
+
+
+async def test_pg_pool_queue_wait_is_bounded_well_under_psycopgs_default(make_app):
+    """The pool must not let a request wait psycopg's default 30 s for a connection.
+
+    With Postgres down the drill saw /query hang 30 s (p50 30,007 ms) before failing - the client has long
+    given up by then, and the 503 is more useful immediately.
+    """
+    async with make_app() as e:
+        assert e.svc.settings.pg_pool_timeout_s <= 10, "a request should not queue for a connection this long"
+        assert e.svc.pool.timeout == pytest.approx(e.svc.settings.pg_pool_timeout_s), \
+            f"the pool was built with timeout={e.svc.pool.timeout}, not the configured value"
+
+
 async def test_readyz_answers_even_when_the_keystore_lookup_hangs(make_app, new_key):
     """/readyz must answer during a Postgres outage - that is the outage it exists to report.
 

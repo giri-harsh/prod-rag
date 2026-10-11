@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from pathlib import Path
 
 import logfire
+import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from prometheus_client import CollectorRegistry
@@ -20,7 +21,7 @@ from app.auth.guard import client_ip
 from app.auth.keys import Principal
 from app.config import Settings, load_settings
 from app.container import Services, build_services
-from app.errors import AppError, EmbeddingConfigMismatch
+from app.errors import AppError, DatabaseUnavailable, EmbeddingConfigMismatch
 from app.observability.metrics import READY, READY_CHECK, UPSTREAM_ERRORS
 from app.observability.redact import install_logging_filter, langsmith_client, logfire_scrubbing
 from app.ratelimit import Limited
@@ -213,6 +214,19 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
             {"error": f"rate limit exceeded ({exc.window})", "request_id": request_id_var.get()},
             429, {"Retry-After": str(exc.retry_after)},
         )
+
+    @app.exception_handler(psycopg.OperationalError)
+    async def _db_unavailable(request: Request, exc: psycopg.OperationalError):
+        """A Postgres outage is a 503, not a 500.
+
+        The chaos drill saw psycopg_pool.PoolTimeout escape unhandled, so a Postgres outage answered
+        "internal server error" with no Retry-After - while the equivalent Qdrant outage answered 503 +
+        Retry-After: 5. PoolTimeout subclasses psycopg.OperationalError, so this one handler covers both the
+        pool failing to hand out a connection and a connection dropping mid-query; neither is a bug in the
+        request, and both are worth retrying.
+        """
+        logfire.error("postgres unavailable", error=type(exc).__name__, detail=str(exc)[:200])
+        return await _app_error(request, DatabaseUnavailable())
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception):

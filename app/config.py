@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(..., description="http(s)://host:6333, or ':memory:' in tests")
     qdrant_api_key: SecretStr | None = None
     pg_pool_max: int = Field(10, ge=1)  # per worker process; total = workers x this (put pgbouncer in front)
+    # How long a request may wait for a pooled connection. psycopg's default is 30 s, and the chaos drill
+    # measured exactly that: with Postgres down, /query hung for 30 s before failing. Nothing useful happens
+    # in that window - the client has usually given up - so fail fast and let the 503 + Retry-After tell the
+    # caller to come back. This also caps the queue wait when the pool is merely saturated, so raise it (or
+    # pg_pool_max) if legitimate load is being shed rather than queued.
+    pg_pool_timeout_s: float = Field(5.0, gt=0, le=60)
     direct_database_url: str | None = None  # session-mode URL for migrations when DATABASE_URL points at pgbouncer
     qdrant_collection: str = "enterprise_rag"  # ALIAS name; physical collections are <alias>_v<N>
 
@@ -66,6 +72,17 @@ class Settings(BaseSettings):
     # Without a bound, a hanging dependency hangs /readyz (psycopg's pool waits its full timeout for a
     # connection that is never coming) instead of reporting that dependency as down.
     readiness_probe_timeout_s: float = Field(3.0, gt=0, le=30)
+    # Redis had NO timeouts (`from_url(url)` leaves both at None), which is two problems. A host that is
+    # unreachable rather than refusing would block a request forever; and because a connect to a dead Redis
+    # does not fail fast, every call waits the full connect timeout. Each consumer (planner cache, rate
+    # limiter, auth-fail limiter, key negative-cache, embedding cache, thread lock) already degrades on
+    # failure, so a request makes several independent Redis calls and pays this once per call: the chaos drill
+    # measured /query p50 going 342 ms -> 16.4 s with Redis down, which is ~8 calls x ~2 s of connect plus
+    # redis-py's retry backoff. Kept short deliberately - a cache miss is cheap, a 16 s request is not. Raise
+    # it if Redis is genuinely far away (cross-region), since a too-tight connect timeout just means more
+    # fallback misses, never a wrong answer.
+    redis_connect_timeout_s: float = Field(0.25, gt=0, le=10)
+    redis_socket_timeout_s: float = Field(2.0, gt=0, le=30)
     max_attempts: int = Field(3, ge=1, le=5)
     retry_after_cap_s: float = 15.0  # longest we will wait on a provider's Retry-After / "try again in Ns" hint (0 = ignore hints)
     llm_model_failover: bool = True  # direct mode: after the keys fail, fall back to LLM_FALLBACK_MODEL (rate limits are per model)

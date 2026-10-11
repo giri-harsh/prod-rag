@@ -166,6 +166,22 @@ def test_token_bucket():
     assert b.take() == 0.0
 
 
+async def test_redis_client_is_built_with_explicit_timeouts(make_app):
+    """The shared Redis client must never be built without socket timeouts.
+
+    `aioredis.from_url(url)` leaves socket_timeout and socket_connect_timeout at None. Two consequences the
+    chaos drill made concrete: a Redis host that is unreachable rather than refusing blocks the request
+    forever, and because a connect to a dead Redis does not fail fast, every call waits the full connect
+    timeout. Each consumer degrades independently, so one /query makes several Redis calls and pays it per
+    call - measured p50 342 ms -> 16.4 s with Redis down.
+    """
+    async with make_app() as e:
+        kwargs = e.svc.redis.connection_pool.connection_kwargs
+        assert kwargs.get("socket_connect_timeout") == e.svc.settings.redis_connect_timeout_s
+        assert kwargs.get("socket_timeout") == e.svc.settings.redis_socket_timeout_s
+        assert kwargs["socket_connect_timeout"] is not None and kwargs["socket_timeout"] is not None
+
+
 async def test_limiter_falls_back_to_per_worker_bucket_when_redis_down():
     class Dead:
         def pipeline(self, **kw):

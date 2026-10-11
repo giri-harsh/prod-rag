@@ -17,6 +17,8 @@ See `.env.example` for a template.
 | `GEMINI_API_KEY` | - | Embeddings |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `gemini-embedding-2` / `768` | GA model + explicit `output_dimensionality`; stored in collection metadata and verified at startup |
 | `LLM_TIMEOUT_S` / `EMBED_TIMEOUT_S` / `QDRANT_TIMEOUT_S` | 30 / 10 / 5 | Per-call timeouts |
+| `REDIS_CONNECT_TIMEOUT_S` / `REDIS_SOCKET_TIMEOUT_S` | 0.25 / 2.0 | Short on purpose. A connect to a dead Redis does not fail fast, and a request makes ~8 independent Redis calls that each degrade separately, so this is paid per call: the chaos drill measured p50 16.4 s with no timeout vs 2.0 s at 0.25 s ([DOCS/15](15_CHAOS_DRILL.md)). A miss is cheap; raise it only if Redis is cross-region |
+| `READINESS_PROBE_TIMEOUT_S` | 3 | Per-dependency budget for one `/readyz` probe (probes run concurrently). A probe that cannot answer in its budget is reported `fail: timeout`, so a hanging dependency cannot hang readiness |
 | `MAX_ATTEMPTS` | 3 | tenacity attempts (exp. backoff + jitter; 429/5xx/timeouts) |
 | `BREAKER_FAILURES` / `BREAKER_RESET_S` | 5 / 30 | Circuit breaker per upstream |
 | `LLM_CONCURRENCY` | 32 | Semaphore bounding in-flight LLM calls per worker |
@@ -43,6 +45,7 @@ See `.env.example` for a template.
 | `SEMCACHE_ENABLED` / `SEMCACHE_THRESHOLD` / `SEMCACHE_TTL_S` | true / 0.95 / 86400 | Semantic answer cache |
 | `WEB_CONCURRENCY` | 1 | Workers per pod; divides per-key limits in the Redis-down fallback |
 | `PG_POOL_MAX` | 10 | Connections per worker process |
+| `PG_POOL_TIMEOUT_S` | 5 | How long a request may queue for a pooled connection. psycopg's default is 30 s, which is how long `/query` hung during a Postgres outage before failing; it now returns 503 + `Retry-After: 5` in ~5 s. Also caps the queue wait when the pool is merely saturated, so raise this or `PG_POOL_MAX` if legitimate load is being shed |
 | `DIRECT_DATABASE_URL` | - | Session-mode URL for migrations when `DATABASE_URL` is pgbouncer |
 | `METRICS_PORT` | 9100 | Internal Prometheus port |
 | `GUARD_ENGINE` | `actions` | `actions` (direct NeMo self-check actions) or `runtime` (full Colang flow engine) |

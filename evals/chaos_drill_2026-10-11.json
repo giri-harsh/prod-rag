@@ -1,0 +1,442 @@
+{
+  "run_at": "2026-10-11T14:06:23+05:30",
+  "phase_seconds": 20.0,
+  "recover_budget_s": 60.0,
+  "phases": [
+    {
+      "name": "baseline",
+      "query": {
+        "status": {
+          "200": 29
+        },
+        "retry_after": {},
+        "messages": {},
+        "transport_errors": {},
+        "total": 29,
+        "ok": 29,
+        "ok_pct": 100.0,
+        "p50_ms": 386,
+        "p95_ms": 718
+      },
+      "readyz": {
+        "status": 200,
+        "ready": true,
+        "checks": {
+          "postgres": "ok",
+          "redis": "ok",
+          "qdrant": "ok",
+          "embedding_config": "ok",
+          "guardrails": "ok"
+        }
+      }
+    },
+    {
+      "name": "redis_down",
+      "query": {
+        "status": {
+          "200": 9
+        },
+        "retry_after": {},
+        "messages": {},
+        "transport_errors": {},
+        "total": 9,
+        "ok": 9,
+        "ok_pct": 100.0,
+        "p50_ms": 2035,
+        "p95_ms": 2406
+      },
+      "readyz": {
+        "status": 503,
+        "ready": false,
+        "checks": {
+          "postgres": "ok",
+          "qdrant": "ok",
+          "embedding_config": "ok",
+          "redis": "fail: TimeoutError",
+          "guardrails": "ok"
+        }
+      }
+    },
+    {
+      "name": "redis_recovered",
+      "query": {
+        "status": {
+          "200": 29
+        },
+        "retry_after": {},
+        "messages": {},
+        "transport_errors": {},
+        "total": 29,
+        "ok": 29,
+        "ok_pct": 100.0,
+        "p50_ms": 372,
+        "p95_ms": 832
+      },
+      "readyz": {
+        "status": 200,
+        "ready": true,
+        "checks": {
+          "postgres": "ok",
+          "redis": "ok",
+          "qdrant": "ok",
+          "embedding_config": "ok",
+          "guardrails": "ok"
+        }
+      }
+    },
+    {
+      "name": "qdrant_down",
+      "query": {
+        "status": {
+          "503": 15
+        },
+        "retry_after": {
+          "5": 15
+        },
+        "messages": {
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'd1cd8efc2f9140339e617d9159620d74'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'c47c42843022474b8294f2560e4aef31'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'ca1b3980ffa84352902987d304d4bd96'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': '9c8f060dc98f48f1a77911133f2f3385'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'b77b547eee854d32bcf647bc65ca1142'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': '1ec355448af64de4b07ba4d220a9432c'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': '12b17ca5c1c34f29a09f6208035185a1'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'daf0ff6e72b34c349679c4c0e7cc3630'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': '221b873cd6a84cb7a62cd095f42370f9'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'cf2971affcf34aaab29c7215269809a1'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'a7f390ad6a0f418999d0722892ae561b'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'baf7b833c0c34767bb5182330f7d64ce'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': 'dbafc24d86d240d2b7ad18d292c3af09'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': '128d6aca6b8440e0b787e042e37f1f92'}": 1,
+          "{'error': 'Knowledge base temporarily unavailable', 'request_id': '1c24dca64cae465d8991b79ed35d71f9'}": 1
+        },
+        "transport_errors": {},
+        "total": 15,
+        "ok": 0,
+        "ok_pct": 0.0,
+        "p50_ms": 452,
+        "p95_ms": 2788
+      },
+      "readyz": {
+        "status": 503,
+        "ready": false,
+        "checks": {
+          "postgres": "ok",
+          "redis": "ok",
+          "qdrant": "fail: ResponseHandlingException",
+          "embedding_config": "fail: ResponseHandlingException",
+          "guardrails": "ok"
+        }
+      }
+    },
+    {
+      "name": "qdrant_recovered",
+      "query": {
+        "status": {
+          "200": 28
+        },
+        "retry_after": {},
+        "messages": {},
+        "transport_errors": {},
+        "total": 28,
+        "ok": 28,
+        "ok_pct": 100.0,
+        "p50_ms": 410,
+        "p95_ms": 799
+      },
+      "readyz": {
+        "status": 200,
+        "ready": true,
+        "checks": {
+          "postgres": "ok",
+          "redis": "ok",
+          "qdrant": "ok",
+          "embedding_config": "ok",
+          "guardrails": "ok"
+        }
+      }
+    },
+    {
+      "name": "postgres_down",
+      "query": {
+        "status": {
+          "503": 5
+        },
+        "retry_after": {
+          "5": 5
+        },
+        "messages": {
+          "{'error': 'Service temporarily unavailable', 'request_id': 'abe1afddd47845beb5b73fcc91e4d984'}": 1,
+          "{'error': 'Service temporarily unavailable', 'request_id': '796cb34566304a7f96683595cb04ab4c'}": 1,
+          "{'error': 'Service temporarily unavailable', 'request_id': '6f5517d52f71480e988a70bad5520e26'}": 1,
+          "{'error': 'Service temporarily unavailable', 'request_id': 'c66b86a01af24a9c807bb2f3a946e3cc'}": 1,
+          "{'error': 'Service temporarily unavailable', 'request_id': 'fd297e646f414736bbcb88bbd005e1fe'}": 1
+        },
+        "transport_errors": {},
+        "total": 5,
+        "ok": 0,
+        "ok_pct": 0.0,
+        "p50_ms": 5017,
+        "p95_ms": 5025
+      },
+      "readyz": {
+        "status": 503,
+        "ready": false,
+        "checks": null
+      }
+    },
+    {
+      "name": "postgres_recovered",
+      "query": {
+        "status": {
+          "200": 34
+        },
+        "retry_after": {},
+        "messages": {},
+        "transport_errors": {},
+        "total": 34,
+        "ok": 34,
+        "ok_pct": 100.0,
+        "p50_ms": 309,
+        "p95_ms": 598
+      },
+      "readyz": {
+        "status": 200,
+        "ready": true,
+        "checks": {
+          "postgres": "ok",
+          "redis": "ok",
+          "qdrant": "ok",
+          "embedding_config": "ok",
+          "guardrails": "ok"
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "action": "kill",
+      "service": "redis",
+      "expected_exe": "redis-server.exe",
+      "killed": [
+        {
+          "pid": 8748,
+          "name": "redis-server.exe",
+          "children": 0,
+          "survivors": []
+        }
+      ],
+      "failed": [],
+      "port_closed": true
+    },
+    {
+      "action": "start",
+      "service": "redis",
+      "port_open": true,
+      "rc": 0
+    },
+    {
+      "action": "await_ready",
+      "service": "redis",
+      "ready_after_s": 0.1,
+      "first_200_after_s": 0.7,
+      "last_status": 200,
+      "budget_s": 60.0,
+      "last_probe": {
+        "status": 200,
+        "ready": true,
+        "checks": {
+          "postgres": "ok",
+          "qdrant": "ok",
+          "redis": "ok",
+          "embedding_config": "ok",
+          "guardrails": "ok"
+        }
+      }
+    },
+    {
+      "action": "kill",
+      "service": "qdrant",
+      "expected_exe": "qdrant.exe",
+      "killed": [
+        {
+          "pid": 9820,
+          "name": "qdrant.exe",
+          "children": 0,
+          "survivors": []
+        }
+      ],
+      "failed": [],
+      "port_closed": true
+    },
+    {
+      "action": "start",
+      "service": "qdrant",
+      "port_open": true,
+      "rc": 0
+    },
+    {
+      "action": "await_ready",
+      "service": "qdrant",
+      "ready_after_s": 0.0,
+      "first_200_after_s": 13.8,
+      "last_status": 200,
+      "budget_s": 60.0,
+      "last_probe": {
+        "status": 200,
+        "ready": true,
+        "checks": {
+          "postgres": "ok",
+          "redis": "ok",
+          "qdrant": "ok",
+          "embedding_config": "ok",
+          "guardrails": "ok"
+        }
+      }
+    },
+    {
+      "action": "kill",
+      "service": "postgres",
+      "expected_exe": "postgres.exe",
+      "killed": [
+        {
+          "pid": 9444,
+          "name": "postgres.exe",
+          "children": 6,
+          "survivors": []
+        }
+      ],
+      "failed": [],
+      "port_closed": true
+    },
+    {
+      "action": "start",
+      "service": "postgres",
+      "port_open": true,
+      "rc": 0
+    },
+    {
+      "action": "await_ready",
+      "service": "postgres",
+      "ready_after_s": 8.6,
+      "first_200_after_s": 0.6,
+      "last_status": 200,
+      "budget_s": 60.0,
+      "last_probe": {
+        "status": 200,
+        "ready": true,
+        "checks": {
+          "redis": "ok",
+          "qdrant": "ok",
+          "embedding_config": "ok",
+          "postgres": "ok",
+          "guardrails": "ok"
+        }
+      }
+    }
+  ],
+  "recovery": {
+    "redis": 0.1,
+    "qdrant": 0.0,
+    "postgres": 8.6
+  },
+  "traffic_recovery": {
+    "redis": 0.7,
+    "qdrant": 13.8,
+    "postgres": 0.6
+  },
+  "tenant": "chaos140624",
+  "api_pid": 8928,
+  "api_log": "_night\\q6\\api.log",
+  "api_still_running": true,
+  "api_family_pids": [
+    8928,
+    5204
+  ],
+  "api_listener_pids": [
+    5204
+  ],
+  "api_pid_unchanged": true,
+  "verdicts": [
+    {
+      "check": "baseline serves traffic",
+      "pass": true,
+      "detail": "100.0% 200"
+    },
+    {
+      "check": "baseline is ready",
+      "pass": true,
+      "detail": "readyz=200"
+    },
+    {
+      "check": "redis down: /query keeps answering",
+      "pass": true,
+      "detail": "100.0% 200 (caches and the auth-fail limiter degrade)"
+    },
+    {
+      "check": "redis down: readiness fails",
+      "pass": true,
+      "detail": "readyz=503 checks=redis=fail: TimeoutError"
+    },
+    {
+      "check": "qdrant down: 503 to clients",
+      "pass": true,
+      "detail": "status={'503': 15}"
+    },
+    {
+      "check": "qdrant down: Retry-After sent",
+      "pass": true,
+      "detail": "retry_after={'5': 15}"
+    },
+    {
+      "check": "qdrant down: readiness fails",
+      "pass": true,
+      "detail": "readyz=503 checks=qdrant=fail: ResponseHandlingException"
+    },
+    {
+      "check": "postgres down: readiness fails",
+      "pass": true,
+      "detail": "readyz=503 checks=postgres=<no detail: the admin lookup reads postgres and is bounded>, ready=False"
+    },
+    {
+      "check": "postgres down: no silent success",
+      "pass": true,
+      "detail": "status={'503': 5}"
+    },
+    {
+      "check": "redis recovered: traffic returns",
+      "pass": true,
+      "detail": "first 200 after 0.7s, then 100.0% 200"
+    },
+    {
+      "check": "redis recovered: readiness returns",
+      "pass": true,
+      "detail": "readyz returned to 200 after 0.1s (budget 60.0s)"
+    },
+    {
+      "check": "qdrant recovered: traffic returns",
+      "pass": true,
+      "detail": "first 200 after 13.8s, then 100.0% 200"
+    },
+    {
+      "check": "qdrant recovered: readiness returns",
+      "pass": true,
+      "detail": "readyz returned to 200 after 0.0s (budget 60.0s)"
+    },
+    {
+      "check": "postgres recovered: traffic returns",
+      "pass": true,
+      "detail": "first 200 after 0.6s, then 100.0% 200"
+    },
+    {
+      "check": "postgres recovered: readiness returns",
+      "pass": true,
+      "detail": "readyz returned to 200 after 8.6s (budget 60.0s)"
+    },
+    {
+      "check": "the API process was never restarted",
+      "pass": true,
+      "detail": "booted pid 8928, alive=True, listeners=[5204]"
+    }
+  ]
+}
