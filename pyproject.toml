@@ -43,7 +43,9 @@ ui = ["streamlit", "requests"]
 eval = ["ragas==0.4.3", "pandas", "openai", "sentence-transformers"]
 
 [dependency-groups]
-dev = ["pip-audit", "bandit", "pytest", "pytest-asyncio", "fakeredis", "httpx", "ruff", "asgi-lifespan", "pgserver"]
+# psutil is a direct import of scripts/chaos_drill.py (it targets the pid LISTENING on a port, never an image
+# name), so it is declared here rather than relied on as a transitive pin in requirements-dev.lock.
+dev = ["pip-audit", "bandit", "pytest", "pytest-asyncio", "fakeredis", "httpx", "ruff", "asgi-lifespan", "pgserver", "psutil"]
 
 load = ["locust"]
 

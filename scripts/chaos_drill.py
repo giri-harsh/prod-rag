@@ -18,7 +18,9 @@ Designed behaviour being verified (app/errors.py, app/api.py:readyz):
   postgres  - readiness fails; the checkpointer cannot persist, so /query fails rather than lying
 In every case /readyz must go 503 while the dependency is down and return to 200 once it is back.
 
-Windows-specific: services are the local processes started by _infra/up_live.sh, killed with taskkill /F.
+Windows-specific: services are the local processes started by _infra/up_live.sh. Each is killed by finding the
+pid LISTENING on its port (and that pid's children) rather than by image name, so the drill cannot take down an
+unrelated Postgres or Redis that happens to be running on the machine.
 """
 from __future__ import annotations
 
@@ -41,7 +43,7 @@ if sys.platform == "win32":
 
 INFRA = ROOT.parent / "_infra"
 
-# name -> (port, image/exe to taskkill, shell command that starts it again)
+# name -> (port, expected image name (recorded, not used to target the kill), shell command that starts it again)
 SERVICES: dict[str, tuple[int, str, str]] = {
     "redis": (6379, "redis-server.exe",
               f"cd '{INFRA}/redis/Redis-8.10.2-Windows-x64-msys2' && nohup ./redis-server.exe --port 6379 "
@@ -78,11 +80,43 @@ def wait_port(port: int, up: bool, timeout: float = 60.0) -> bool:
     return port_open(port) == up
 
 
+def listening_pids(port: int) -> list[int]:
+    """PIDs with a LISTEN socket on `port`, plus their children (postgres runs a tree of helper processes)."""
+    import psutil
+
+    pids = []
+    for c in psutil.net_connections(kind="inet"):
+        if c.laddr and c.laddr.port == port and c.status == psutil.CONN_LISTEN and c.pid:
+            pids.append(c.pid)
+    return sorted(set(pids))
+
+
 def kill_service(name: str) -> dict:
-    _, exe, _ = SERVICES[name]
-    r = subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True, text=True)
-    down = wait_port(SERVICES[name][0], up=False, timeout=30)
-    return {"action": "kill", "service": name, "exe": exe, "rc": r.returncode, "port_closed": down}
+    """Kill only the process LISTENING on this service's port, and its children.
+
+    Not `taskkill /F /IM postgres.exe`: that matches by image name, so a drill inside this project would also
+    kill an unrelated Postgres or Redis the machine happens to be running. The port is what identifies the
+    instance this project started.
+    """
+    import psutil
+
+    port, exe, _ = SERVICES[name]
+    pids = listening_pids(port)
+    killed, failed = [], []
+    for pid in pids:
+        try:
+            proc = psutil.Process(pid)
+            victims = [*proc.children(recursive=True), proc]  # children first: a parent's death can orphan them
+            for v in victims:
+                with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                    v.kill()
+            psutil.wait_procs(victims, timeout=15)
+            killed.append({"pid": pid, "name": proc.name(), "children": len(victims) - 1})
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+            failed.append({"pid": pid, "error": type(e).__name__})
+    down = wait_port(port, up=False, timeout=30)
+    return {"action": "kill", "service": name, "expected_exe": exe, "killed": killed, "failed": failed,
+            "port_closed": down}
 
 
 def start_service(name: str) -> dict:
@@ -189,8 +223,18 @@ async def run(a) -> int:
                 await asyncio.sleep(3)
                 await phase(out, client, keys, f"{name}_recovered", a.phase_s)
 
+        # The central claim of the drill is that the API process is never restarted, so check it rather than
+        # restating that it is alive: the pid launched at boot must still be the one holding the port (or one of
+        # its own children), which also catches a supervisor quietly swapping in a new process.
+        import psutil
+
         out["api_still_running"] = api.poll() is None
-        out["api_pid_unchanged"] = out["api_still_running"]
+        family = {api.pid}
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            family |= {c.pid for c in psutil.Process(api.pid).children(recursive=True)}
+        out["api_listener_pids"] = listening_pids(a.port)
+        out["api_pid_unchanged"] = (out["api_still_running"] and bool(out["api_listener_pids"])
+                                    and set(out["api_listener_pids"]) <= family)
     finally:
         api.terminate()
         with contextlib.suppress(Exception):
