@@ -57,6 +57,11 @@ JUDGE_MODEL = os.getenv("JUDGE_MODEL", "qwen/qwen3.8-27b")
 # and is recorded in the result file and in the checkpoint fingerprint, because it is a judge-quality tradeoff,
 # not an implementation detail. Set JUDGE_REASONING=default to let the provider decide again.
 JUDGE_REASONING = os.getenv("JUDGE_REASONING", "none")
+# ragas defaults its judge to max_tokens=1024 (InstructorModelArgs), and faithfulness asks for ONE VERDICT PER
+# STATEMENT with a written reason - a 10-statement answer does not fit, so instructor raises
+# IncompleteOutputException("output is incomplete due to a max_tokens length limit") and the whole run dies after
+# phase 1 has already been paid for. This is a cap, not a spend: the judge is billed for what it emits.
+JUDGE_MAX_TOKENS = int(os.getenv("JUDGE_MAX_TOKENS", "8192"))
 COOLDOWN_STANDARD = 62
 COOLDOWN_MINI = 40       # between individual samples — lets sliding TPM window recover
 GENERAL_BATCH_SIZE = 1  # one sample at a time: abatch_score fires calls concurrently per sample,
@@ -97,7 +102,7 @@ def _apply_reasoning_policy(client):
 def _build_judge():
     api_key = os.getenv("JUDGE_GROQ") or os.getenv("GROQ_API_KEY")
     client = _apply_reasoning_policy(AsyncOpenAI(api_key=api_key, base_url=GROQ_BASE_URL))
-    llm = llm_factory(JUDGE_MODEL, provider="openai", client=client)
+    llm = llm_factory(JUDGE_MODEL, provider="openai", client=client, max_tokens=JUDGE_MAX_TOKENS)
     embeddings = HuggingFaceEmbeddings(
         model="sentence-transformers/all-MiniLM-L6-v2",
         use_api=False,
@@ -169,6 +174,22 @@ def _is_transient(exc: BaseException) -> bool:
     return False
 
 
+def _truncated_output(exc: BaseException) -> bool:
+    """True when the judge's structured answer was cut off by the completion cap.
+
+    instructor raises IncompleteOutputException for this. It is worth naming, because the traceback it produces
+    points at ragas internals and says nothing about the one knob that fixes it - which cost a full phase-1 run
+    to work out once already.
+    """
+    seen, exc_i = set(), exc
+    while exc_i is not None and id(exc_i) not in seen:
+        seen.add(id(exc_i))
+        if type(exc_i).__name__ == "IncompleteOutputException" or "max_tokens length limit" in str(exc_i):
+            return True
+        exc_i = exc_i.__cause__ or exc_i.__context__
+    return False
+
+
 async def _score_batch(metric, batch: list, label: str, status_cb=None) -> list:
     """One abatch_score call, retried through transient failures.
 
@@ -180,6 +201,11 @@ async def _score_batch(metric, batch: list, label: str, status_cb=None) -> list:
         try:
             return await metric.abatch_score(batch)
         except Exception as exc:  # noqa: BLE001 - classified by _is_transient, re-raised when not transient
+            if _truncated_output(exc):
+                raise RuntimeError(
+                    f"{label}: the judge's structured output was cut off at max_tokens="
+                    f"{JUDGE_MAX_TOKENS}. Retrying cannot help - raise JUDGE_MAX_TOKENS and re-run; the "
+                    f"metrics already checkpointed are kept.") from exc
             if attempt == TRANSIENT_ATTEMPTS or not _is_transient(exc):
                 raise
             wait = TRANSIENT_BACKOFF_S * attempt
@@ -394,6 +420,7 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None, checkpoint=None,
                 if len(s["actual_contexts"]) < len(s.get("actual_contexts_raw") or s["actual_contexts"])],
             "reasoning": JUDGE_REASONING,
             "judge_model": JUDGE_MODEL,
+            "max_tokens": JUDGE_MAX_TOKENS,
         }
 
     return results

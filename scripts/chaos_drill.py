@@ -238,6 +238,14 @@ async def run(a) -> int:
             print(f"chaos: {name} is not running on {port}; start it with _infra/up_live.sh", file=sys.stderr)
             return 2
 
+    # Refuse to start if something already holds the API port. uvicorn's bind failure goes to DEVNULL here, so
+    # wait_port() would see the port open, the drill would drive traffic against the OTHER process and judge the
+    # app by it. Two drills were accidentally run at once and did exactly that.
+    if port_open(a.port):
+        print(f"chaos: port {a.port} is already in use - another drill or API is running. Stop it, or pass "
+              f"--port. Refusing to measure a process this drill did not start.", file=sys.stderr)
+        return 2
+
     env = {**os.environ, "APP_ENV": "loadtest", "QDRANT_COLLECTION": a.collection,
            "METRICS_PORT": "0", "PORT": str(a.port)}
     keys = mint_keys(env)

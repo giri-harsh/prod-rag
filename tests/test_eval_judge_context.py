@@ -92,3 +92,54 @@ def test_reasoning_policy_is_a_no_op_when_the_provider_default_is_wanted(monkeyp
     monkeypatch.setattr(M, "JUDGE_REASONING", "default")
     client = type("C", (), {"chat": None})()
     assert M._apply_reasoning_policy(client) is client  # would raise if it tried to wrap client.chat
+
+
+# ── the judge's completion budget ─────────────────────────────────────────────────────────────────────
+
+def test_the_judge_is_given_an_explicit_completion_budget(monkeypatch):
+    """ragas' 1024-token default truncates faithfulness verdicts, so the cap must be passed explicitly.
+
+    Faithfulness asks for one verdict plus a written reason PER STATEMENT in the answer; a 10-statement answer
+    does not fit in 1024 tokens, and instructor then raises IncompleteOutputException and kills the run.
+    """
+    seen = {}
+
+    def fake_factory(model, provider=None, client=None, **kw):
+        seen.update({"model": model, "provider": provider, **kw})
+        return "llm"
+
+    monkeypatch.setattr(M, "llm_factory", fake_factory)
+    monkeypatch.setattr(M, "HuggingFaceEmbeddings", lambda **_kw: "emb")
+    monkeypatch.setenv("JUDGE_GROQ", "test-key-not-a-real-secret")
+
+    llm, emb = M._build_judge()
+    assert (llm, emb) == ("llm", "emb")
+    assert seen["max_tokens"] == M.JUDGE_MAX_TOKENS
+    assert seen["model"] == M.JUDGE_MODEL
+
+
+def test_the_budget_is_larger_than_the_ragas_default_it_overrides():
+    """Canary: if ragas' own default ever rises above ours, this override has become a downgrade."""
+    from ragas.llms.base import InstructorModelArgs
+
+    ragas_default = InstructorModelArgs().max_tokens
+    assert ragas_default == 1024, f"ragas default changed to {ragas_default}; re-check the comment in metrics.py"
+    assert M.JUDGE_MAX_TOKENS > ragas_default
+
+
+def test_the_budget_is_recorded_with_the_scores(tmp_path, monkeypatch):
+    """The cap is a judge-configuration fact, so a result file must say which one produced its numbers."""
+    import asyncio
+
+    monkeypatch.setattr(M, "_build_judge", lambda: (None, None))
+
+    async def no_cooldown(*_a, **_kw):
+        return None
+
+    monkeypatch.setattr(M, "_cooldown", no_cooldown)
+    monkeypatch.setattr(M, "_experiments", lambda _l, _e: [])
+    prov: dict = {}
+    data = {"rag_samples": [{"question": "q", "actual_response": "a", "actual_contexts": ["ctx"],
+                             "reference": "r", "expected_tools": [], "actual_tools_called": []}]}
+    asyncio.run(M.run_all_metrics(data, provenance=prov))
+    assert prov["judge_context"]["max_tokens"] == M.JUDGE_MAX_TOKENS

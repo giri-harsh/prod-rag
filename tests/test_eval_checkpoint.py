@@ -219,3 +219,52 @@ def test_score_batch_does_not_retry_a_permanent_failure(monkeypatch):
     with pytest.raises(ValueError):
         asyncio.run(M._score_batch(metric, [{"user_input": "q"}], "Faithfulness", None))
     assert metric.calls == 1
+
+
+# ── a judge answer cut off by the completion cap ──────────────────────────────────────────────────────
+
+class IncompleteOutputException(Exception):
+    """Same name as instructor's, which is how _truncated_output recognises it without importing instructor."""
+
+
+def test_truncated_output_is_recognised_by_type_and_by_message():
+    assert M._truncated_output(IncompleteOutputException("whatever"))
+    assert M._truncated_output(ValueError("The output is incomplete due to a max_tokens length limit."))
+
+
+def test_truncated_output_is_recognised_through_the_cause_chain():
+    try:
+        try:
+            raise IncompleteOutputException("cut off")
+        except IncompleteOutputException as cause:
+            raise WrappedConnectionError("retries exhausted") from cause
+    except WrappedConnectionError as exc:
+        assert M._truncated_output(exc)
+
+
+@pytest.mark.parametrize("exc", [
+    ConnectionError("Connection error."),
+    ValueError("model_not_found"),
+    RuntimeError("judge-call budget exceeded"),
+])
+def test_truncated_output_negative_control(exc):
+    assert not M._truncated_output(exc)
+
+
+def test_score_batch_fails_fast_on_a_truncated_judge_answer_and_names_the_knob(monkeypatch):
+    """Retrying a max_tokens truncation just buys the same cut-off answer three more times.
+
+    The real run died here with a traceback deep in ragas that never mentioned max_tokens, after phase 1 had
+    already been paid for; the error now says which setting to change.
+    """
+    slept = []
+
+    async def fake_sleep(s):
+        slept.append(s)
+
+    monkeypatch.setattr(M.asyncio, "sleep", fake_sleep)
+    metric = FakeMetric(fail_times=99, exc=IncompleteOutputException("max_tokens length limit"))
+    with pytest.raises(RuntimeError, match="JUDGE_MAX_TOKENS"):
+        asyncio.run(M._score_batch(metric, [{"user_input": "q"}], "Faithfulness", None))
+    assert metric.calls == 1, "a truncated answer must not be retried"
+    assert slept == []
