@@ -399,6 +399,32 @@ async def test_startup_accepts_the_selector_loop_the_app_actually_runs_on():
     api_mod.check_event_loop_supports_psycopg()  # raises if it rejects the loop running these tests
 
 
+def test_entrypoint_loop_choice_is_one_psycopg_can_use():
+    """The `python -m app.main` entrypoint must actually get a non-Proactor loop out of uvicorn.
+
+    Regression test for a fix that did not work. Setting WindowsSelectorEventLoopPolicy is NOT enough: uvicorn
+    0.36 replaced setup_event_loop() with get_loop_factory() and builds its loop from an explicit factory that
+    hard-returns ProactorEventLoop on win32, ignoring the policy entirely. So `python -m app.main` still came
+    up on a Proactor loop and the startup guard rejected it. This asserts the end result - the loop uvicorn
+    would really construct for this entrypoint - instead of asserting that we set a policy.
+    """
+    import asyncio
+
+    import uvicorn
+
+    from app.main import LOOP
+
+    factory = uvicorn.Config("app.main:app", loop=LOOP).get_loop_factory()
+    if factory is None:  # pragma: no cover - only if LOOP ever becomes "none"
+        pytest.fail(f"loop={LOOP!r} leaves the loop unspecified, so uvicorn's default applies")
+    loop = factory()
+    try:
+        assert not isinstance(loop, getattr(asyncio, "ProactorEventLoop", ())), (
+            f"loop={LOOP!r} gives {type(loop).__name__}, which psycopg's async pool refuses")
+    finally:
+        loop.close()
+
+
 async def test_request_id_and_metrics(make_app, new_key):
     _, k = new_key()
     async with make_app(guard_responses=("Yes",)) as e:
