@@ -1,8 +1,10 @@
 """FastAPI app factory: auth, tenant-scoped sessions, rate limits, guarded RAG, ops endpoints."""
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import re
+import sys
 import uuid
 from contextvars import ContextVar
 from pathlib import Path
@@ -128,11 +130,30 @@ async def release_thread_lock(svc, lock) -> None:
         logfire.warn("thread lock release failed (expires on its own)", error=str(e))
 
 
+def check_event_loop_supports_psycopg() -> None:
+    """Refuse to start on an event loop psycopg's async pool cannot use. Windows-only.
+
+    `uvicorn app.main:app` on Windows runs a ProactorEventLoop, and psycopg rejects it. The failure mode without
+    this check is silent and expensive: the pool never fills, every connection attempt logs "Psycopg cannot use
+    the 'ProactorEventLoop'", and the app serves traffic while reporting postgres down - which cost a chaos-drill
+    run that looked like an application defect. Fail at startup, naming the fix, instead.
+    """
+    if sys.platform != "win32":
+        return
+    loop = asyncio.get_running_loop()
+    if isinstance(loop, asyncio.ProactorEventLoop):  # type: ignore[attr-defined]  # Windows-only class
+        raise RuntimeError(
+            "this app is running on a ProactorEventLoop, which psycopg's async pool cannot use, so every "
+            "Postgres operation would fail. On Windows start the app with 'python -m app.main' (it sets "
+            "WindowsSelectorEventLoopPolicy before the loop is created) rather than 'uvicorn app.main:app'.")
+
+
 def create_app(settings: Settings | None = None, overrides: dict | None = None) -> FastAPI:
     s = settings or load_settings()
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
+        check_event_loop_supports_psycopg()
         svc = await build_services(s, overrides)
         app.state.svc = svc
         if s.app_env != "test":
@@ -242,9 +263,16 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         checks: dict[str, str] = {}
 
         async def probe(name, coro):
+            # Every probe is bounded. Without this, a dependency that HANGS (rather than refusing) hangs
+            # readiness itself: psycopg's pool waits its full timeout for a connection that will never come, so
+            # /readyz took ~30 s to answer instead of reporting the dependency as failing. A probe that cannot
+            # answer within the budget IS a failing probe, and saying so immediately is the whole point of a
+            # readiness endpoint - an orchestrator's probe timeout is a second or two.
             try:
-                await coro
+                await asyncio.wait_for(coro, timeout=svc.settings.readiness_probe_timeout_s)
                 checks[name] = "ok"
+            except asyncio.TimeoutError:
+                checks[name] = f"fail: timeout after {svc.settings.readiness_probe_timeout_s}s"
             except Exception as e:
                 checks[name] = f"fail: {type(e).__name__}"
 

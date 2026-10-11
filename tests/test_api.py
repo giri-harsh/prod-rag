@@ -335,6 +335,70 @@ async def test_readyz_503_when_redis_down(make_app, new_key):
         assert (await e.client.get("/healthz")).status_code == 200  # liveness unaffected
 
 
+async def test_readyz_fails_fast_when_a_dependency_hangs(make_app, new_key):
+    """A hanging dependency must make readiness FAIL, not make readiness hang.
+
+    The chaos drill found this the hard way: with psycopg unable to connect, /readyz sat waiting for the pool
+    instead of answering, so the probe timed out client-side and the drill could never establish a baseline.
+    An orchestrator gives a readiness probe a second or two; a probe that cannot answer in its budget is a
+    failing probe.
+    """
+    import asyncio
+    import time
+
+    class Hangs:
+        async def ping(self):
+            await asyncio.sleep(300)
+
+    async with make_app() as e:
+        e.svc.redis = Hangs()
+        e.svc.settings.readiness_probe_timeout_s = 0.2
+        _, ak = new_key(admin=True)
+        t0 = time.perf_counter()
+        r = await e.client.get("/readyz", headers=H(ak))
+        elapsed = time.perf_counter() - t0
+
+        assert r.status_code == 503, r.text
+        assert "timeout" in r.json()["checks"]["redis"], r.json()["checks"]
+        assert elapsed < 10, f"/readyz took {elapsed:.1f}s; it must not wait for a hanging dependency"
+        # the other dependencies are still reported, so the response names what is actually wrong
+        assert r.json()["checks"]["postgres"] == "ok"
+
+
+async def test_startup_refuses_an_event_loop_psycopg_cannot_use(monkeypatch):
+    """Windows-only guard: fail at startup instead of serving traffic with every DB call broken.
+
+    `uvicorn app.main:app` on Windows runs a ProactorEventLoop that psycopg's async pool rejects. The app used
+    to boot anyway and report postgres down forever.
+    """
+    import asyncio
+
+    from app import api as api_mod
+
+    if not hasattr(asyncio, "ProactorEventLoop"):
+        pytest.skip("ProactorEventLoop only exists on Windows")
+
+    monkeypatch.setattr(api_mod.sys, "platform", "win32")
+
+    # A real, fully constructed ProactorEventLoop that is never run - the guard only inspects its type. Using
+    # an uninitialised instance instead (ProactorEventLoop.__new__) leaves an object whose __del__ raises
+    # during GC, which pytest reports as an unraisable exception from an unrelated later test.
+    loop = asyncio.ProactorEventLoop()
+    try:
+        monkeypatch.setattr(asyncio, "get_running_loop", lambda: loop)
+        with pytest.raises(RuntimeError, match="python -m app.main"):
+            api_mod.check_event_loop_supports_psycopg()
+    finally:
+        loop.close()
+
+
+async def test_startup_accepts_the_selector_loop_the_app_actually_runs_on():
+    """Negative control: the policy the project sets everywhere must pass the guard."""
+    from app import api as api_mod
+
+    api_mod.check_event_loop_supports_psycopg()  # raises if it rejects the loop running these tests
+
+
 async def test_request_id_and_metrics(make_app, new_key):
     _, k = new_key()
     async with make_app(guard_responses=("Yes",)) as e:

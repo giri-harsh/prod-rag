@@ -251,22 +251,42 @@ async def run(a) -> int:
     keys = mint_keys(env)
     out["tenant"] = keys["tenant"]
 
-    api = subprocess.Popen(
-        [str(ROOT / ".venv/Scripts/python.exe"), "-m", "uvicorn", "app.main:app",
-         "--host", "127.0.0.1", "--port", str(a.port), "--log-level", "warning"],
-        cwd=str(ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # `python -m app.main`, not `python -m uvicorn app.main:app`: on Windows the latter creates a
+    # ProactorEventLoop before importing the app, psycopg's pool cannot use it, and the API then serves while
+    # reporting postgres down - the first attempt at this drill hung for 17 minutes on exactly that.
+    api_log = pathlib.Path(a.out).parent / "api.log"
+    api_log.parent.mkdir(parents=True, exist_ok=True)
+    # The API's own output goes to a file rather than DEVNULL. It was discarded, which made the failure above
+    # invisible: the only evidence was a drill that never printed anything.
+    with api_log.open("w", encoding="utf-8") as log:
+        api = subprocess.Popen(
+            [str(ROOT / ".venv/Scripts/python.exe"), "-m", "app.main"],
+            cwd=str(ROOT), env={**env, "HOST": "127.0.0.1", "UVICORN_LOG_LEVEL": "warning"},
+            stdout=log, stderr=subprocess.STDOUT)
     out["api_pid"] = api.pid
+    out["api_log"] = str(api_log)
     try:
         if not wait_port(a.port, up=True, timeout=180):
             print("chaos: the API never opened its port", file=sys.stderr)
             return 1
 
         async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{a.port}") as client:
-            # wait for readiness before claiming a baseline
-            for _ in range(60):
-                if (await probe_ready(client, keys["admin"]))["status"] == 200:
+            # Wait for readiness before claiming a baseline - and refuse to drill an API that never became
+            # ready. Carrying on regardless turns one startup problem into a wall of failed verdicts that look
+            # like degradation defects.
+            ready = None
+            for _ in range(30):
+                ready = await probe_ready(client, keys["admin"])
+                if ready["status"] == 200:
                     break
                 await asyncio.sleep(2)
+            if not ready or ready["status"] != 200:
+                print(f"chaos: the API never became ready (last probe: {ready}). See {api_log} for why; "
+                      f"nothing was killed.", file=sys.stderr)
+                out["aborted"] = {"why": "API never became ready", "last_probe": ready}
+                pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+                pathlib.Path(a.out).write_text(json.dumps(out, indent=2), encoding="utf-8")
+                return 2
 
             targets = [a.only] if a.only else ["redis", "qdrant", "postgres"]
             await phase(out, client, keys, "baseline", a.phase_s)

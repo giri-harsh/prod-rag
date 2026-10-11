@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 30.0
     embed_timeout_s: float = 10.0
     qdrant_timeout_s: float = 5.0
+    # Per-dependency budget for a /readyz probe. Deliberately short: a readiness probe that cannot answer is a
+    # failing readiness probe, and an orchestrator gives it a second or two before calling the pod unready.
+    # Without a bound, a hanging dependency hangs /readyz (psycopg's pool waits its full timeout for a
+    # connection that is never coming) instead of reporting that dependency as down.
+    readiness_probe_timeout_s: float = Field(3.0, gt=0, le=30)
     max_attempts: int = Field(3, ge=1, le=5)
     retry_after_cap_s: float = 15.0  # longest we will wait on a provider's Retry-After / "try again in Ns" hint (0 = ignore hints)
     llm_model_failover: bool = True  # direct mode: after the keys fail, fall back to LLM_FALLBACK_MODEL (rate limits are per model)
