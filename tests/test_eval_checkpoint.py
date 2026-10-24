@@ -22,12 +22,17 @@ class FakeScore:
 class FakeMetric:
     """Stands in for a ragas metric. Counts calls so a resumed metric can be proven not to have run."""
 
-    def __init__(self, value=0.75, fail_times=0, exc=None):
+    def __init__(self, value=0.75, fail_times=0, exc=None, fail_on_call=None):
         self.value, self.fail_times, self.exc = value, fail_times, exc
+        self.fail_on_call = fail_on_call  # raise on exactly this call number (1-based), to cut a metric in half
         self.calls = 0
+        self.seen: list = []
 
     async def abatch_score(self, batch):
         self.calls += 1
+        self.seen.extend(batch)
+        if self.fail_on_call == self.calls:
+            raise (self.exc or ConnectionError("Connection error."))
         if self.fail_times > 0:
             self.fail_times -= 1
             raise (self.exc or ConnectionError("Connection error."))
@@ -155,6 +160,191 @@ def test_partial_checkpoint_resumes_only_the_missing_metric(tmp_path, fake_run):
 def test_no_checkpoint_path_still_works(fake_run):
     out = run({"rag_samples": samples()})
     assert round(float(out["faithfulness"]["faithfulness"].mean()), 3) == 0.75
+
+
+# ── resuming INSIDE a metric ──────────────────────────────────────────────────────────────────────────
+# Per-metric granularity was not enough. The judge's hard limit is tokens per DAY, and one metric over 14
+# samples is a large part of that budget, so the real run kept dying partway through Faithfulness - which
+# checkpointed nothing, because the metric never finished. Three separate attempts scored zero metrics while
+# spending ~200,000 judge tokens. Samples are therefore saved as they are scored.
+
+def test_a_metric_cut_off_midway_keeps_the_samples_it_paid_for(tmp_path, fake_run):
+    ckpt = tmp_path / "phase2.json"
+    data = {"rag_samples": samples()}
+    # Dies on the 3rd of 3 samples, the way a daily token cap lands mid-metric.
+    fake_run["faithfulness"] = FakeMetric(value=0.5, fail_on_call=3, exc=ValueError("model_not_found"))
+
+    with pytest.raises(ValueError):
+        run(data, checkpoint=ckpt)
+
+    on_disk = json.loads(ckpt.read_text(encoding="utf-8"))["metrics"]["faithfulness"]
+    assert len(on_disk["rows"]) == 2, "the two scored samples were paid for and must survive"
+    assert not on_disk.get("complete")
+
+
+def test_resuming_scores_only_the_samples_that_were_never_scored(tmp_path, fake_run):
+    ckpt = tmp_path / "phase2.json"
+    data = {"rag_samples": samples()}
+    fake_run["faithfulness"] = FakeMetric(value=0.5, fail_on_call=3, exc=ValueError("model_not_found"))
+    with pytest.raises(ValueError):
+        run(data, checkpoint=ckpt)
+
+    fake_run["faithfulness"] = FakeMetric(value=0.9)  # a fresh judge for the resumed run
+    prov: dict = {}
+    out = run(data, checkpoint=ckpt, provenance=prov)
+
+    assert fake_run["faithfulness"].calls == 1, "only the one unscored sample may be re-bought"
+    assert [b["user_input"] for b in fake_run["faithfulness"].seen] == ["q2"]
+    # The resumed metric still reports all three samples, in the original sample order, mixing the
+    # already-paid-for scores with the new one.
+    assert out["faithfulness"]["faithfulness"].tolist() == [0.5, 0.5, 0.9]
+    assert out["faithfulness"]["question"].tolist() == ["q0", "q1", "q2"]
+    assert prov["partial_metrics_resumed"] == {"faithfulness": 2}
+
+
+def test_a_half_scored_metric_is_not_reported_as_finished(tmp_path, fake_run):
+    """Negative control: a partial metric must never be read back as a complete result.
+
+    Its mean over 2 of 14 samples is not the metric, and reporting it as one would put a number in
+    evals/baseline_<date>.json that no reader could tell apart from a real measurement.
+    """
+    ckpt = tmp_path / "phase2.json"
+    data = {"rag_samples": samples()}
+    fake_run["faithfulness"] = FakeMetric(value=0.5, fail_on_call=3, exc=ValueError("model_not_found"))
+    with pytest.raises(ValueError):
+        run(data, checkpoint=ckpt)
+
+    fake_run["faithfulness"] = FakeMetric(value=0.9)
+    prov: dict = {}
+    run(data, checkpoint=ckpt, provenance=prov)
+    assert "faithfulness" not in prov["resumed_metrics"], "a partial metric is resumed, not reused wholesale"
+
+
+def test_partial_rows_are_dropped_when_they_do_not_match_the_samples(tmp_path, fake_run):
+    """The rows are a prefix of the sample list, so they are only reusable if the questions still line up."""
+    ckpt = tmp_path / "phase2.json"
+    data = {"rag_samples": samples()}
+    fake_run["faithfulness"] = FakeMetric(value=0.5, fail_on_call=3, exc=ValueError("model_not_found"))
+    with pytest.raises(ValueError):
+        run(data, checkpoint=ckpt)
+
+    on_disk = json.loads(ckpt.read_text(encoding="utf-8"))
+    on_disk["metrics"]["faithfulness"]["rows"][0]["question"] = "a question from another dataset"
+    ckpt.write_text(json.dumps(on_disk), encoding="utf-8")
+
+    fake_run["faithfulness"] = FakeMetric(value=0.9)
+    out = run(data, checkpoint=ckpt)
+    assert fake_run["faithfulness"].calls == 3, "mismatched partial rows must be re-scored, not trusted"
+    assert out["faithfulness"]["faithfulness"].tolist() == [0.9, 0.9, 0.9]
+
+
+# ── riding out the judge's daily token cap ────────────────────────────────────────────────────────────
+# Groq's TPD is a leaky bucket that refills continuously (~139 tokens/min for a 200,000/day model), and its
+# 429 says exactly how long to wait. Treating that as a failure threw away a whole run three times; it is
+# backpressure, so it is waited out rather than retried-then-abandoned.
+
+TPD_429 = (
+    "Error code: 429 - {'error': {'message': 'Rate limit reached for model `qwen/qwen3.8-27b` in "
+    "organization `org_x` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 198958, "
+    "Requested 3440. Please try again in 17m15.936s. Need more tokens? Upgrade to Dev Tier today', "
+    "'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
+)
+TPM_429 = (
+    "Error code: 429 - {'error': {'message': 'Rate limit reached for model `qwen/qwen3.8-27b` in "
+    "organization `org_x` service tier `on_demand` on tokens per minute (TPM): Limit 8000, Used 7900, "
+    "Requested 300. Please try again in 1.5s.', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}"
+)
+
+
+@pytest.mark.parametrize("message,expected", [
+    (TPD_429, 17 * 60 + 15.936),
+    (TPM_429, 1.5),
+    ("Rate limit reached ... Please try again in 8m37.535999999s.", 8 * 60 + 37.535999999),
+    ("Rate limit reached ... Please try again in 42s.", 42.0),
+])
+def test_rate_limit_wait_is_read_from_the_provider_hint(message, expected):
+    assert M._rate_limit_wait_s(ValueError(message)) == pytest.approx(expected, abs=0.01)
+
+
+def test_rate_limit_without_a_hint_falls_back_to_a_default_wait():
+    wait = M._rate_limit_wait_s(ValueError("Error code: 429 - rate_limit_exceeded, no hint here"))
+    assert wait == M.RATE_LIMIT_DEFAULT_WAIT_S
+
+
+@pytest.mark.parametrize("exc", [
+    ConnectionError("Connection error."),
+    ValueError("model_not_found: llama-3.1-8b-instant has been decommissioned"),
+    RuntimeError("judge-call budget exceeded (401 > 400)"),
+])
+def test_rate_limit_negative_control(exc):
+    """Only a real rate limit may trigger a 17-minute sleep; everything else must surface now."""
+    assert M._rate_limit_wait_s(exc) is None
+
+
+def test_rate_limit_is_seen_through_the_cause_chain():
+    try:
+        try:
+            raise ValueError(TPD_429)
+        except ValueError as cause:
+            raise WrappedConnectionError("retries exhausted") from cause
+    except WrappedConnectionError as exc:
+        assert M._rate_limit_wait_s(exc) == pytest.approx(17 * 60 + 15.936, abs=0.01)
+
+
+def test_score_batch_waits_out_a_rate_limit_and_then_succeeds(monkeypatch):
+    slept = []
+
+    async def fake_sleep(s):
+        slept.append(s)
+
+    monkeypatch.setattr(M.asyncio, "sleep", fake_sleep)
+    metric = FakeMetric(value=0.9, fail_times=1, exc=ValueError(TPD_429))
+    scores = asyncio.run(M._score_batch(metric, [{"user_input": "q"}], "Faithfulness", None))
+    assert [s.value for s in scores] == [0.9]
+    assert sum(slept) == pytest.approx(17 * 60 + 15.936 + M.RATE_LIMIT_WAIT_MARGIN_S, abs=0.5)
+
+
+def test_waiting_out_a_rate_limit_does_not_spend_the_transient_retry_budget(monkeypatch):
+    """Backpressure is not a failure: a run must not be killed by N rate limits in a row."""
+    async def fake_sleep(_s):
+        return None
+
+    monkeypatch.setattr(M.asyncio, "sleep", fake_sleep)
+    metric = FakeMetric(value=0.9, fail_times=M.TRANSIENT_ATTEMPTS + 3, exc=ValueError(TPM_429))
+    scores = asyncio.run(M._score_batch(metric, [{"user_input": "q"}], "Faithfulness", None))
+    assert [s.value for s in scores] == [0.9]
+    assert metric.calls == M.TRANSIENT_ATTEMPTS + 4
+
+
+def test_rate_limit_waiting_is_bounded_and_names_the_knob(monkeypatch):
+    """A cap that will not refill in time must stop the run, not sleep until morning."""
+    async def fake_sleep(_s):
+        return None
+
+    monkeypatch.setattr(M.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(M, "RATE_LIMIT_WAIT_BUDGET_S", 1800)
+    metric = FakeMetric(fail_times=10_000, exc=ValueError(TPD_429))
+    with pytest.raises(RuntimeError, match="JUDGE_RATE_LIMIT_WAIT_BUDGET_S"):
+        asyncio.run(M._score_batch(metric, [{"user_input": "q"}], "Faithfulness", None))
+    # 1800s of budget against ~1036s waits: two sleeps, then it gives up instead of a third.
+    assert metric.calls == 2
+
+
+def test_a_rate_limited_metric_still_checkpoints_the_samples_it_finished(tmp_path, fake_run, monkeypatch):
+    """The whole point: the daily cap lands mid-metric, and what was already paid for survives it."""
+    async def fake_sleep(_s):
+        return None
+
+    monkeypatch.setattr(M.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(M, "RATE_LIMIT_WAIT_BUDGET_S", 0)  # no budget left to wait with
+    ckpt = tmp_path / "phase2.json"
+    fake_run["faithfulness"] = FakeMetric(value=0.6, fail_on_call=3, exc=ValueError(TPD_429))
+
+    with pytest.raises(RuntimeError, match="JUDGE_RATE_LIMIT_WAIT_BUDGET_S"):
+        run({"rag_samples": samples()}, checkpoint=ckpt)
+
+    rows = json.loads(ckpt.read_text(encoding="utf-8"))["metrics"]["faithfulness"]["rows"]
+    assert [r["faithfulness"] for r in rows] == [0.6, 0.6]
 
 
 # ── transient-failure classification ──────────────────────────────────────────────────────────────────
