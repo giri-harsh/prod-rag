@@ -1,0 +1,105 @@
+# Production overlay. Use together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Needs these in .env (no defaults on purpose): POSTGRES_PASSWORD, QDRANT_API_KEY, GROQ_API_KEY, GEMINI_API_KEY.
+# Only caddy publishes host ports (80/443). The metrics port 9100 is never published.
+# `!reset` / `!override` need Docker Compose >= 2.24.
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
+x-prod-env: &prod-env
+  APP_ENV: prod
+  USE_GATEWAY: "false"            # direct Groq (+ GROQ_FALLBACK_API_KEY); no Portkey
+  WEB_CONCURRENCY: "2"
+  DATABASE_URL: postgresql://rag:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@pgbouncer:5432/rag
+  DIRECT_DATABASE_URL: postgresql://rag:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/rag
+  QDRANT_API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY in .env}
+  TRUSTED_PROXIES: 172.28.0.0/24  # the compose network below (web, which fronts the api, lives on it)
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+services:
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    mem_limit: 1g
+    logging: *logging
+
+  redis:
+    restart: unless-stopped
+    ports: !reset []
+    mem_limit: 256m
+    logging: *logging
+
+  qdrant:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY in .env}
+    mem_limit: 1g
+    logging: *logging
+
+  pgbouncer:
+    restart: unless-stopped
+    environment:
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      AUTH_TYPE: scram-sha-256    # clients (api/worker) authenticate with the same .env password
+    logging: *logging
+
+  migrate:
+    environment: *prod-env
+    logging: *logging
+
+  api:
+    restart: unless-stopped
+    ports: !reset []
+    environment: *prod-env
+    mem_limit: 4g
+    logging: *logging
+
+  worker:
+    restart: unless-stopped
+    environment: *prod-env
+    mem_limit: 1536m
+    logging: *logging
+
+  web:
+    build: ./web
+    image: prod-rag-web:local
+    restart: unless-stopped
+    environment:
+      BFF_HOST: 0.0.0.0
+      RAG_API_URL: http://api:8080
+      BFF_RAG_API_KEY: ${BFF_RAG_API_KEY:-}     # empty until verify_on_vm.sh creates the user key; web restarts until set
+      BFF_ALLOWED_ORIGINS: https://${SITE_DOMAIN:-localhost}
+      BFF_TRUSTED_PROXIES: 172.28.0.0/24
+      BFF_COOKIE_SECURE: "true"
+    depends_on:
+      api: {condition: service_healthy}
+    mem_limit: 256m
+    logging: *logging
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # no depends_on web: web restarts until BFF_RAG_API_KEY exists on a first deploy, and caddy just answers 502 meanwhile
+    mem_limit: 128m
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

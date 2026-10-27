@@ -1,0 +1,26 @@
+# SITE_DOMAIN=rag.harshgiri.site -> automatic Let's Encrypt certificate (ports 80 and 443 must be reachable).
+# SITE_DOMAIN=localhost (default) -> Caddy issues a certificate from its own internal CA (the equivalent of `tls internal`);
+# browsers warn about it, test with `curl -k`.
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$SITE_DOMAIN:localhost} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+
+	# flush_interval -1: do not buffer streamed responses
+	reverse_proxy web:8787 {
+		flush_interval -1
+	}
+}

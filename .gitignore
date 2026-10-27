@@ -100,3 +100,5 @@ docker_query.json
 evals/.phase1.json
 evals/.phase2_checkpoint.json
 web/e2e/.logs/
+
+DEPLOY_PROGRESS.md
