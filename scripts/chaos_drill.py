@@ -31,6 +31,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import shutil
 import socket
 import subprocess
 import sys
@@ -167,6 +168,20 @@ def stop_api(api: subprocess.Popen, port: int) -> None:
         print(f"chaos: warning - something is still listening on {port} after shutdown", file=sys.stderr)
 
 
+def find_bash() -> str:
+    """bash from PATH, else Git for Windows' own (installed but often not on PATH in a plain PowerShell/cmd)."""
+    found = shutil.which("bash")
+    if found:
+        return found
+    for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"),
+                 os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs")):
+        if base:
+            cand = pathlib.Path(base) / "Git" / "bin" / "bash.exe"
+            if cand.exists():
+                return str(cand)
+    raise FileNotFoundError("bash not found: put Git for Windows' bin directory on PATH")
+
+
 def start_service(name: str, log_dir: pathlib.Path) -> dict:
     """Restart a service and wait for its port. bash's output goes to a FILE, never to a pipe.
 
@@ -191,7 +206,7 @@ def start_service(name: str, log_dir: pathlib.Path) -> dict:
     log_dir.mkdir(parents=True, exist_ok=True)
     log = log_dir / f"start_{name}.log"
     with log.open("w", encoding="utf-8") as fh:
-        rc = subprocess.run(["bash", "-lc", cmd], stdout=fh, stderr=subprocess.STDOUT,
+        rc = subprocess.run([find_bash(), "-lc", cmd], stdout=fh, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL, timeout=60).returncode
     up = wait_port(port, up=True, timeout=90)
     ev = {"action": "start", "service": name, "port_open": up, "rc": rc}
