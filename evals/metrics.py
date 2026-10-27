@@ -80,6 +80,16 @@ TRANSIENT_EXC_NAMES = {"APIConnectionError", "APITimeoutError", "ConnectError", 
 TRANSIENT_MARKERS = ("Connection error", "getaddrinfo failed", "Temporary failure in name resolution",
                      "Connection reset", "Server disconnected")
 
+# Rate limits are backpressure, not failure. Groq's tokens-per-day cap is a leaky bucket that refills continuously
+# and its 429 says how long to wait ("Please try again in 17m15.936s"), so the judge waits that long (plus a
+# margin) instead of dying. The wait is bounded per judge call: a cap that will not refill inside the budget
+# stops the run with a message naming the knob, rather than sleeping until morning.
+RATE_LIMIT_DEFAULT_WAIT_S = 60.0     # when a 429 carries no "try again in" hint
+RATE_LIMIT_WAIT_MARGIN_S = 5.0       # added to the provider's hint (it is rounded down)
+RATE_LIMIT_WAIT_BUDGET_S = float(os.getenv("JUDGE_RATE_LIMIT_WAIT_BUDGET_S", "7200"))
+_RATE_LIMIT_MARKERS = ("429", "rate_limit_exceeded", "Rate limit reached")
+_RETRY_HINT = re.compile(r"try again in\s+(?:(\d+(?:\.\d+)?)h)?\s*(?:(\d+(?:\.\d+)?)m(?!s))?\s*(?:(\d+(?:\.\d+)?)s)?", re.I)
+
 
 def _apply_reasoning_policy(client):
     """Send reasoning_effort on every judge request, if JUDGE_REASONING asks for one.
@@ -174,6 +184,25 @@ def _is_transient(exc: BaseException) -> bool:
     return False
 
 
+def _rate_limit_wait_s(exc: BaseException) -> float | None:
+    """Seconds the provider asked us to wait if `exc` (or anything in its cause chain) is a 429, else None.
+
+    Only a real rate limit may trigger a long sleep; every other failure must surface immediately.
+    """
+    seen, exc_i = set(), exc
+    while exc_i is not None and id(exc_i) not in seen:
+        seen.add(id(exc_i))
+        text = str(exc_i)
+        if any(marker in text for marker in _RATE_LIMIT_MARKERS):
+            m = _RETRY_HINT.search(text)
+            if m and any(m.groups()):
+                h, mins, s = (float(g) if g else 0.0 for g in m.groups())
+                return h * 3600 + mins * 60 + s
+            return RATE_LIMIT_DEFAULT_WAIT_S
+        exc_i = exc_i.__cause__ or exc_i.__context__
+    return None
+
+
 def _truncated_output(exc: BaseException) -> bool:
     """True when the judge's structured answer was cut off by the completion cap.
 
@@ -195,9 +224,12 @@ async def _score_batch(metric, batch: list, label: str, status_cb=None) -> list:
 
     A 6-metric run takes well over an hour of wall clock, so a laptop whose network drops for a minute used to
     discard every metric already scored (and the judge calls they cost). Transient failures now back off and
-    retry the batch; anything else still propagates.
+    retry the batch; anything else still propagates. A 429 is waited out for as long as the provider says
+    (bounded by RATE_LIMIT_WAIT_BUDGET_S) and does not spend the transient-retry attempts.
     """
-    for attempt in range(1, TRANSIENT_ATTEMPTS + 1):
+    attempt, rate_waited = 0, 0.0
+    while True:
+        attempt += 1
         try:
             return await metric.abatch_score(batch)
         except Exception as exc:  # noqa: BLE001 - classified by _is_transient, re-raised when not transient
@@ -206,6 +238,21 @@ async def _score_batch(metric, batch: list, label: str, status_cb=None) -> list:
                     f"{label}: the judge's structured output was cut off at max_tokens="
                     f"{JUDGE_MAX_TOKENS}. Retrying cannot help - raise JUDGE_MAX_TOKENS and re-run; the "
                     f"metrics already checkpointed are kept.") from exc
+            limit_wait = _rate_limit_wait_s(exc)
+            if limit_wait is not None:
+                wait = limit_wait + RATE_LIMIT_WAIT_MARGIN_S
+                if rate_waited + wait > RATE_LIMIT_WAIT_BUDGET_S:
+                    raise RuntimeError(
+                        f"{label}: the judge is rate-limited and the next wait ({wait:.0f}s) would exceed the "
+                        f"{RATE_LIMIT_WAIT_BUDGET_S:.0f}s budget already {rate_waited:.0f}s used. Raise "
+                        f"JUDGE_RATE_LIMIT_WAIT_BUDGET_S or re-run later; the samples already scored are "
+                        f"checkpointed.") from exc
+                rate_waited += wait
+                attempt -= 1  # backpressure is not a failure: it must not use up the transient retries
+                if status_cb:
+                    status_cb(f"⏳ {label}: judge rate limit, waiting {wait:.0f}s for the bucket to refill")
+                await asyncio.sleep(wait)
+                continue
             if attempt == TRANSIENT_ATTEMPTS or not _is_transient(exc):
                 raise
             wait = TRANSIENT_BACKOFF_S * attempt
@@ -213,13 +260,14 @@ async def _score_batch(metric, batch: list, label: str, status_cb=None) -> list:
                 status_cb(f"⚠️ {label}: transient judge failure ({type(exc).__name__}), "
                           f"retry {attempt}/{TRANSIENT_ATTEMPTS - 1} in {wait}s")
             await asyncio.sleep(wait)
-    raise AssertionError("unreachable")  # pragma: no cover
 
 
-async def _batched_score(metric, inputs: list, samples: list, status_cb=None, label: str = "") -> list:
+async def _batched_score(metric, inputs: list, samples: list, status_cb=None, label: str = "",
+                         on_progress=None) -> list:
     """
     Runs abatch_score in chunks of GENERAL_BATCH_SIZE with cooldowns between chunks.
     Keeps each burst under 6,000 TPM on Groq's on_demand tier.
+    on_progress(scores_so_far) is called after every chunk so the caller can persist what was paid for.
     """
     all_scores = []
     batches = [inputs[i : i + GENERAL_BATCH_SIZE] for i in range(0, len(inputs), GENERAL_BATCH_SIZE)]
@@ -228,6 +276,8 @@ async def _batched_score(metric, inputs: list, samples: list, status_cb=None, la
             await _cooldown(COOLDOWN_MINI, f"{label} batch {b_idx}", status_cb)
         scores = await _score_batch(metric, batch, label, status_cb)
         all_scores.extend(scores)
+        if on_progress:
+            on_progress(list(all_scores))
     return all_scores
 
 def _scored_digest(samples: list) -> str:
@@ -255,6 +305,7 @@ class Checkpoint:
                             "scored": _scored_digest(samples)}
         self.data: dict = {"fingerprint": self.fingerprint, "metrics": {}}
         self.resumed: list[str] = []
+        self.partial_resumed: dict[str, int] = {}
         if not self.path or not self.path.exists():
             return
         try:
@@ -273,13 +324,38 @@ class Checkpoint:
     def done(self, key: str):
         """The checkpointed DataFrame for `key`, or None if it was never scored."""
         entry = self.data["metrics"].get(key)
-        if not entry or not entry.get("rows"):
+        # An entry without a "complete" flag predates partial checkpoints and was only ever written finished.
+        if not entry or not entry.get("rows") or entry.get("complete") is False:
             return None
         self.resumed.append(key)
         return pd.DataFrame(entry["rows"])
 
+    def partial(self, key: str, samples: list) -> list[dict]:
+        """Rows already scored for a metric that was cut off midway, or [] if none can be trusted.
+
+        The rows are a prefix of the sample list (samples are scored in order), so they are only reusable while
+        every row still names the question at its position; any mismatch discards all of them.
+        """
+        entry = self.data["metrics"].get(key)
+        if not entry or entry.get("complete") is not False:
+            return []
+        rows = entry.get("rows") or []
+        if not rows or len(rows) >= len(samples):
+            return []
+        if any(r.get("question") != s["question"][:65] or key not in r for r, s in zip(rows, samples)):
+            return []
+        self.partial_resumed[key] = len(rows)
+        return rows
+
+    def save_partial(self, key: str, rows: list[dict]) -> None:
+        """Persist the samples scored so far; not a finished metric, so done() never returns it."""
+        self._write(key, rows, None, None, complete=False)
+
     def save(self, key: str, df: pd.DataFrame, calls, tokens=None) -> None:
-        self.data["metrics"][key] = {"rows": df.to_dict(orient="records"), "calls": calls, "tokens": tokens,
+        self._write(key, df.to_dict(orient="records"), calls, tokens, complete=True)
+
+    def _write(self, key: str, rows: list[dict], calls, tokens, complete: bool) -> None:
+        self.data["metrics"][key] = {"rows": rows, "complete": complete, "calls": calls, "tokens": tokens,
                                      "at": dt.datetime.now().astimezone().isoformat(timespec="seconds")}
         if not self.path:
             return
@@ -379,9 +455,19 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None, checkpoint=None,
             with logfire.span(f"Exp {i} - {label}"):
                 before = calls_so_far() if calls_so_far else None
                 before_tok = tokens_so_far() if tokens_so_far else None
-                inputs = [make_input(s) for s in samples]
-                scores = await _batched_score(build_metric(), inputs, samples, status_cb, label)
-                df = _score_df(key, samples, scores)
+                prior = ckpt.partial(key, samples)  # samples a previous, cut-off run already paid for
+                if prior and status_cb:
+                    status_cb(f"{label}: resuming after {len(prior)}/{len(samples)} checkpointed samples")
+                todo = samples[len(prior):]
+                inputs = [make_input(s) for s in todo]
+
+                def keep(new_scores, key=key, prior=prior, todo=todo):
+                    ckpt.save_partial(key, prior + _score_df(key, todo, new_scores).to_dict(orient="records"))
+
+                scores = await _batched_score(build_metric(), inputs, todo, status_cb, label, on_progress=keep)
+                df = _score_df(key, todo, scores)
+                if prior:
+                    df = pd.concat([pd.DataFrame(prior), df], ignore_index=True)
                 results[key] = df
                 spent = (calls_so_far() - before) if calls_so_far else None
                 spent_tok = (tokens_so_far() - before_tok) if tokens_so_far else None
@@ -405,6 +491,7 @@ async def run_all_metrics(golden_dataset: dict, status_cb=None, checkpoint=None,
 
     if provenance is not None:
         provenance["resumed_metrics"] = list(ckpt.resumed)
+        provenance["partial_metrics_resumed"] = dict(ckpt.partial_resumed)
         provenance["calls_by_metric"] = ckpt.calls_by_metric
         provenance["tokens_by_metric"] = ckpt.tokens_by_metric
         provenance["checkpoint"] = str(ckpt.path) if ckpt.path else None
