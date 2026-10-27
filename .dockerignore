@@ -1,13 +1,31 @@
-.venv
-_audit
+# The api/worker image needs only: requirements.lock, app/, gunicorn.conf.py (see Dockerfile COPY lines).
 .git
+.github
+.claude
+.venv*
+venv
+env
 .pytest_cache
 .ruff_cache
 __pycache__
+*.py[cod]
+.env*
+!.env.example
+*.log
+live_*
 DATA
+DOCS
+_audit
+_night
 notebooks
 evals
-ui
 tests
-DOCS
+ui
+loadtest
+scripts
+deploy
+web
 *.md
+*.zip
+backups
+New Text Document.txt
