@@ -1,0 +1,2629 @@
+{
+ "recorded_at": "2026-10-28",
+ "chips": {
+  "normal": {
+   "layout": "single",
+   "cases": [
+    {
+     "label": null,
+     "question": "How does the horizontal pod autoscaler decide when to scale pods?",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": false,
+         "rail": null,
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 537,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": false,
+         "labels": {},
+         "logged_as": "How does the horizontal pod autoscaler decide when to scale pods?"
+        },
+        {
+         "step": "plan",
+         "intent": "search",
+         "original": "How does the horizontal pod autoscaler decide when to scale pods?",
+         "rewritten": "how does horizontal pod autoscaler decide when to scale pods",
+         "standalone": true,
+         "has_history": false,
+         "cache_hit": false,
+         "degraded": false,
+         "ms": 571,
+         "llm_calls": 1
+        },
+        {
+         "step": "semantic_cache",
+         "hit": false,
+         "skipped": false,
+         "ms": 624
+        },
+        {
+         "step": "retrieval",
+         "iteration": 1,
+         "query": "how does horizontal pod autoscaler decide when to scale pods",
+         "embed_ms": 624,
+         "search_ms": 12,
+         "rerank_ms": 168,
+         "ms": 804,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.7915,
+           "snippet": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.7293,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.7211,
+           "snippet": "### Advantages of HPA Elasticity : Automatically adjusts the number of pods to meet current demand. Cost-Effic"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.7145,
+           "snippet": "A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers # ⎈ A Hands-On Guide to Kubernetes Horizo"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.706,
+           "snippet": "### Step 4: Testing Now, let’s test the HPA by increasing the load on the hpa-deploy deployment. We'll use the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.701,
+           "snippet": "## Vertical Pod Autoscaling (VPA) ### What is VPA? Vertical Pod Autoscaling (VPA) adjusts the CPU and memory r"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 10.8888,
+           "snippet": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 10.2406,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 9.992,
+           "snippet": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 8.0297,
+           "snippet": "### Step 2: Create a Service Create a file named nginx-service.yaml with the following content: apiVersion: v1"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 7.0875,
+           "snippet": "### Step 2: Create a Deployment Create a file named vpa-deployment.yaml with the following content: apiVersion"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 6.9598,
+           "snippet": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s"
+          }
+         ],
+         "fused": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 1,
+           "snippet": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.6667,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.3409,
+           "snippet": "### Advantages of HPA Elasticity : Automatically adjusts the number of pods to meet current demand. Cost-Effic"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.325,
+           "snippet": "### Step 2: Create a Service Create a file named nginx-service.yaml with the following content: apiVersion: v1"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.3111,
+           "snippet": "A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers # ⎈ A Hands-On Guide to Kubernetes Horizo"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.3056,
+           "snippet": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.2917,
+           "snippet": "### Step 4: Testing Now, let’s test the HPA by increasing the load on the hpa-deploy deployment. We'll use the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.2338,
+           "snippet": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9994,
+           "snippet": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the",
+           "fused_rank": 1
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9952,
+           "snippet": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s",
+           "fused_rank": 8
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9927,
+           "snippet": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed",
+           "fused_rank": 6
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.992,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA",
+           "fused_rank": 2
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9918,
+           "snippet": "A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers # ⎈ A Hands-On Guide to Kubernetes Horizo",
+           "fused_rank": 5
+          }
+         ],
+         "chunks": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9994,
+           "text": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the number of pods in a replication controller, deployment, or replica set based on observed CPU utilization (or other select metrics). This allows your application to scale out (add more pods) or scale in (reduce the number of pods) in response to load changes. ### How Does HPA Work? HPA operates by: Monitoring Metrics: HPA continuously monitors the specified metrics (e.g., CPU usage, memory usage, custom metrics). Evaluating Thresholds: It compares the current metric values against predefined thresholds. Scaling Pods: If the metric values exceed the thresholds, HPA increases the number of pods. Conversely, if the values drop below the thresholds, it decreases the number of pods.",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > Horizontal Pod Autoscaling (HPA)"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9952,
+           "text": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s essential to have the Metrics Server installed in your Kubernetes cluster. The Metrics Server collects resource usage metrics from the cluster’s nodes and pods, which are necessary for autoscaling decisions. You can install the Metrics Server using either a YAML manifest or the official Helm chart. To install the latest release of the Metrics Server from the YAML manifest, follow these steps: Download the Components Manifest: Use kubectl apply to download and apply the Components manifest directly from the latest release of the Metrics Server: $ kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml This command fetches the YAML manifest for the latest release of the Metrics Server from its GitHub repository and applies i",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > Metric Server Setup"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9927,
+           "text": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed by the VerticalPodAutoscaler (VPA), you can set the mode for that container to “Off”. This ensures that the VPA does not adjust the resource requests for that particular container. Here’s an example configuration: apiVersion: autoscaling.k8s.io/v1 kind: VerticalPodAutoscaler . . . resourcePolicy: containerPolicies: - containerName: <container_name> mode: \"Off\" In this example: <container_name> refers to the name of the container within the pod for which you want to exclude scaling. mode: \"Off\" specifies that the VPA should not apply any autoscaling actions to this particular container. By configuring the VPA in this way, you can ensure that only specific containers within your pods are subject to autoscaling, while others remain unaffected. This flexibility allows you to fi",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > Practical Example of VPA > Exclude scaling for a specific container"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.992,
+           "text": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA is ideal for stateless applications that can easily scale horizontally by adding more pods. It’s useful when you need to handle variable workloads and ensure high availability. VPA is suitable for applications where scaling horizontally is not feasible or when you need to optimize resource usage for individual pods. It’s beneficial for stateful applications or those with varying resource needs. ... ## Conclusion Kubernetes autoscaling, through HPA and VPA, provides robust mechanisms to manage application scalability and resource optimization. By understanding and implementing these autoscaling strategies, you can ensure that your applications are resilient, performant, and cost-effective. ...",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > HPA vs. VPA: Which One to Use?"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9918,
+           "text": "A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers # ⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ ### ⇢ HPA & VPA in Kubernetes with a Practical Example Anvesh Muppeda Jun 3, 2024 · 11 min read HPA & VPA in Kubernetes by Anvesh Muppeda In the world of container orchestration, Kubernetes has emerged as the de facto standard. One of its powerful features is autoscaling, which helps maintain application performance and optimize resource usage. In this post, we’ll dive into two main types of autoscaling in Kubernetes: Horizontal Pod Autoscaling (HPA) and Vertical Pod Autoscaling (VPA) . ## Introduction to Kubernetes Autoscaling Autoscaling in Kubernetes ensures that your application can handle varying loads by automatically adjusting the number of running pods or the resources allocated to them. This dynamic adjustment is crucial for mai",
+           "page": null,
+           "heading": ""
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 1,
+         "score": 0.9994,
+         "threshold": 0.05,
+         "verdict": "good",
+         "next": "answer"
+        },
+        {
+         "step": "llm",
+         "model": "openai/gpt-oss-120b",
+         "fallback": false,
+         "cache_hit": false,
+         "tokens_in": 1346,
+         "tokens_out": 162,
+         "ms": 762,
+         "llm_calls": 1,
+         "grounded": true,
+         "context_chunks": 5
+        },
+        {
+         "step": "output_guard",
+         "blocked": false,
+         "rail": null,
+         "ms": 461,
+         "stored_in_cache": true,
+         "llm_calls": 1
+        }
+       ],
+       "total_ms": 3289,
+       "llm_calls": 4
+      },
+      "answer": "The Horizontal Pod Autoscaler continuously watches the metrics you’ve configured (such as CPU utilization, memory usage, or custom metrics). It compares the current values of those metrics against the thresholds you defined in the HPA spec.  \n\n- **If the observed metric values are above the target threshold**, the HPA calculates a higher replica count and scales the workload out by adding pods.  \n- **If the metric values fall below the threshold**, it reduces the replica count and scales the workload in by removing pods.  \n\nIn short, the HPA decides to scale up or down by monitoring the selected metrics and evaluating whether they exceed or drop below the configured thresholds.",
+      "session_id": "cap-normal-a-0",
+      "sources": [
+       "pods_autoscale.html"
+      ],
+      "thought_process": [
+       "Input guardrail: passed",
+       "Search: how does horizontal pod autoscaler decide when to scale pods",
+       "Retrieval #1: 5 chunks, top score 0.999 (dropped 0, neutralized 0)"
+      ],
+      "status": "Response generated.",
+      "blocked": false,
+      "cache_hit": false,
+      "iterations": 1
+     }
+    }
+   ]
+  },
+  "exact": {
+   "layout": "single",
+   "cases": [
+    {
+     "label": null,
+     "question": "What does backoffLimit do?",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": false,
+         "rail": null,
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 1020,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": false,
+         "labels": {},
+         "logged_as": "What does backoffLimit do?"
+        },
+        {
+         "step": "plan",
+         "intent": "search",
+         "original": "What does backoffLimit do?",
+         "rewritten": "backoffLimit Kubernetes",
+         "standalone": true,
+         "has_history": false,
+         "cache_hit": true,
+         "degraded": false,
+         "ms": 6,
+         "llm_calls": 0
+        },
+        {
+         "step": "semantic_cache",
+         "hit": false,
+         "skipped": false,
+         "ms": 13
+        },
+        {
+         "step": "retrieval",
+         "iteration": 1,
+         "query": "backoffLimit Kubernetes",
+         "embed_ms": 2,
+         "search_ms": 10,
+         "rerank_ms": 152,
+         "ms": 164,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7397,
+           "snippet": "#### 2. Progressive Backoff for External Dependencies spec: template: spec: containers: - name: api-consumer i"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7303,
+           "snippet": "### Key Characteristics #### 1. Restart Policy Requirements Jobs have strict requirements for Pod restart poli"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.725,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7168,
+           "snippet": "### 2. CronJob Not Creating Jobs Symptoms: CronJob exists but no Jobs are created CronJob Troubleshooting Flow"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7117,
+           "snippet": "## Disaster Recovery and Backup Strategies ### 1. Job State Backup \\# Backup CronJob definitions apiVersion: b"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7066,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "monitor_job.docx",
+           "score": 3.6536,
+           "snippet": "## Creating Your First Kubernetes Job In this step, we'll create a simple Kubernetes job that will run a conta"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 3.0191,
+           "snippet": "### Creating a Job That Takes Longer Let's create another job that will take longer to complete so we can obse"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 2.9644,
+           "snippet": "## Future Trends and Considerations ### 1. Event-Driven Jobs with KEDA Event-Driven Architecture with KEDA \\#"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 2.9342,
+           "snippet": "### 3. Machine Learning Model Training Scenario: Periodic model retraining with new data apiVersion: batch/v1"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 2.8904,
+           "snippet": "### Key Characteristics #### 1. Restart Policy Requirements Jobs have strict requirements for Pod restart poli"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 2.7029,
+           "snippet": "#### 2. Progressive Backoff for External Dependencies spec: template: spec: containers: - name: api-consumer i"
+          }
+         ],
+         "fused": [
+          {
+           "source": "cronjobs.docx",
+           "score": 0.6429,
+           "snippet": "#### 2. Progressive Backoff for External Dependencies spec: template: spec: containers: - name: api-consumer i"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.5625,
+           "snippet": "## Creating Your First Kubernetes Job In this step, we'll create a simple Kubernetes job that will run a conta"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.5,
+           "snippet": "### Key Characteristics #### 1. Restart Policy Requirements Jobs have strict requirements for Pod restart poli"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.381,
+           "snippet": "### Creating a Job That Takes Longer Let's create another job that will take longer to complete so we can obse"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.35,
+           "snippet": "## Future Trends and Considerations ### 1. Event-Driven Jobs with KEDA Event-Driven Architecture with KEDA \\#"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.3125,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.3111,
+           "snippet": "### 3. Machine Learning Model Training Scenario: Periodic model retraining with new data apiVersion: batch/v1"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.2679,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "monitor_job.docx",
+           "score": 0.9396,
+           "snippet": "## Creating Your First Kubernetes Job In this step, we'll create a simple Kubernetes job that will run a conta",
+           "fused_rank": 2
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0098,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e",
+           "fused_rank": 6
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0049,
+           "snippet": "#### 2. Progressive Backoff for External Dependencies spec: template: spec: containers: - name: api-consumer i",
+           "fused_rank": 1
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.0008,
+           "snippet": "### Creating a Job That Takes Longer Let's create another job that will take longer to complete so we can obse",
+           "fused_rank": 4
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0003,
+           "snippet": "## Disaster Recovery and Backup Strategies ### 1. Job State Backup \\# Backup CronJob definitions apiVersion: b",
+           "fused_rank": 10
+          }
+         ],
+         "chunks": [
+          {
+           "source": "monitor_job.docx",
+           "score": 0.9396,
+           "text": "## Creating Your First Kubernetes Job In this step, we'll create a simple Kubernetes job that will run a container, perform a task, and then complete. This will give us something to monitor in the following steps. ### Understanding Kubernetes Jobs A Kubernetes Job is a controller that creates one or more pods and ensures they successfully terminate. Jobs are useful for batch processes, one-time tasks, or any task that should run to completion rather than indefinitely. ### Creating a Job Configuration File Let's create a simple job configuration file. Open a terminal and create a new file called hello-job.yaml in your project directory: cd ~/project nano hello-job.yaml Copy and paste the following YAML content into the file: apiVersion: batch/v1 kind: Job metadata: name: hello-job spec: template: spec: containers: - name: hello image: busybox:1.28 command: [\"sh\", \"-c\",",
+           "page": null,
+           "heading": "How to monitor Kubernetes job status and logs > Creating Your First Kubernetes Job"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0098,
+           "text": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform engineer, you’ve likely encountered scenarios where you need to run one-time tasks, batch jobs, or scheduled operations in your Kubernetes clusters. Unlike long-running services managed by Deployments or StatefulSets, these finite workloads require a different approach. Enter Kubernetes Jobs and CronJobs — powerful resources designed specifically for task-oriented workloads that run to completion. In this comprehensive guide, we’ll explore everything you need to know about Jobs and CronJobs, from basic concepts to advanced patterns, real-world use cases, troubleshooting strategies, and security considerations. Kubernetes Job Hierarchy ## Understanding Kubernetes Jobs ### What Are Jobs? A Kubernetes Job is a resource designed to run finite workloads that execute a task to co",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0049,
+           "text": "#### 2. Progressive Backoff for External Dependencies spec: template: spec: containers: - name: api-consumer image: my-app:latest command: - sh - -c - | for i in $(seq 1 5); do if ./call-external-api; then echo \"API call successful\" exit 0 else echo \"API call failed, attempt $i/5\" sleep $((i * 10)) # Progressive backoff: 10s, 20s, 30s, 40s, 50s fi done echo \"All API call attempts failed\" exit 1 backoffLimit: 3 # Additional job-level retries #### 3. Graceful Shutdown Handling import signal import sys import time class GracefulJobRunner: def __init__(self): self.shutdown_requested = False signal.signal(signal.SIGTERM, self.signal_handler) signal.signal(signal.SIGINT, self.signal_handler) def signal_handler(self, signum, frame): print(f\"Received signal {signum}, initiating graceful shutdown...\") self.shutdown_requested = True def run(self): items_to_pro",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Advanced Patterns and Anti-Patterns > ✅ Best Practices > 2. Progressive Backoff for External Dependencies"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.0008,
+           "text": "### Creating a Job That Takes Longer Let's create another job that will take longer to complete so we can observe it in the Active state: cd ~/project nano long-job.yaml Copy and paste the following YAML content: apiVersion: batch/v1 kind: Job metadata: name: long-job spec: template: spec: containers: - name: long image: busybox:1.28 command: [ \"sh\", \"-c\", 'echo \"Starting long job...\" && sleep 30 && echo \"Long job completed!\"' ] restartPolicy: Never backoffLimit: 4 Save the file and exit nano. Then create the job: kubectl apply -f long-job.yaml Now let's check its status immediately: kubectl get jobs You should see that long-job shows 0/1 completions because it's still running. If you keep checking every few seconds, you'll eventually see it change to 1/1 after about 30 seconds. This demonstrates how you can monitor the progress of your jobs in real-time using",
+           "page": null,
+           "heading": "How to monitor Kubernetes job status and logs > Monitoring Kubernetes Job Status > Creating a Job That Takes Longer"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0003,
+           "text": "## Disaster Recovery and Backup Strategies ### 1. Job State Backup \\# Backup CronJob definitions apiVersion: batch/v1 kind: CronJob metadata: name: backup-job-definitions spec: schedule: \"0 6 * * *\" # Daily at 6 AM jobTemplate: spec: template: spec: serviceAccountName: backup-sa containers: - name: backup-tool image: bitnami/kubectl:latest command: - sh - -c - | \\# Create backup directory with timestamp BACKUP_DATE=$(date +%Y%m%d-%H%M%S) mkdir -p /backup/$BACKUP_DATE \\# Backup all CronJobs kubectl get cronjobs --all-namespaces -o yaml > /backup/$BACKUP_DATE/cronjobs.yaml \\# Backup all Jobs (recent ones) kubectl get jobs --all-namespaces --field-selector=status.completionTime>$(date -d '7 days ago' -Iseconds) -o yaml > /backup/$BACKUP_DATE/recent-jobs.yaml \\# Backup ConfigMaps and Secrets used by jobs kubectl get configmaps,secrets --all-namespaces -l compone",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Disaster Recovery and Backup Strategies"
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 1,
+         "score": 0.9396,
+         "threshold": 0.05,
+         "verdict": "good",
+         "next": "answer"
+        },
+        {
+         "step": "llm",
+         "model": "openai/gpt-oss-120b",
+         "fallback": false,
+         "cache_hit": false,
+         "tokens_in": 1663,
+         "tokens_out": 121,
+         "ms": 1234,
+         "llm_calls": 1,
+         "grounded": true,
+         "context_chunks": 5
+        },
+        {
+         "step": "output_guard",
+         "blocked": false,
+         "rail": null,
+         "ms": 448,
+         "stored_in_cache": true,
+         "llm_calls": 1
+        }
+       ],
+       "total_ms": 2927,
+       "llm_calls": 3
+      },
+      "answer": "`backoffLimit` specifies how many times Kubernetes will retry a Job after a failure.  \nIf a pod created by the Job exits with a non‑zero status, the Job controller will create a new pod to try again. The Job will keep retrying until the number of failed attempts reaches the value set in `backoffLimit`. Once that limit is exceeded, the Job is marked as failed and no further retries are attempted.",
+      "session_id": "cap-exact-a-0",
+      "sources": [
+       "cronjobs.docx",
+       "monitor_job.docx"
+      ],
+      "thought_process": [
+       "Input guardrail: passed",
+       "Search: backoffLimit Kubernetes",
+       "Retrieval #1: 5 chunks, top score 0.940 (dropped 0, neutralized 0)"
+      ],
+      "status": "Response generated.",
+      "blocked": false,
+      "cache_hit": false,
+      "iterations": 1
+     }
+    }
+   ]
+  },
+  "followup": {
+   "layout": "turns",
+   "cases": [
+    {
+     "label": "Turn 1",
+     "question": "What is a Kubernetes CronJob?",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": false,
+         "rail": null,
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 505,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": false,
+         "labels": {},
+         "logged_as": "What is a Kubernetes CronJob?"
+        },
+        {
+         "step": "plan",
+         "intent": "search",
+         "original": "What is a Kubernetes CronJob?",
+         "rewritten": "Kubernetes CronJob definition",
+         "standalone": true,
+         "has_history": false,
+         "cache_hit": true,
+         "degraded": false,
+         "ms": 8,
+         "llm_calls": 0
+        },
+        {
+         "step": "semantic_cache",
+         "hit": false,
+         "skipped": false,
+         "ms": 10
+        },
+        {
+         "step": "retrieval",
+         "iteration": 1,
+         "query": "Kubernetes CronJob definition",
+         "embed_ms": 1,
+         "search_ms": 31,
+         "rerank_ms": 173,
+         "ms": 205,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7974,
+           "snippet": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduli"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.768,
+           "snippet": "### 3. Machine Learning Model Training Scenario: Periodic model retraining with new data apiVersion: batch/v1"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7617,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.7555,
+           "snippet": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides C"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7548,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7535,
+           "snippet": "## Disaster Recovery and Backup Strategies ### 1. Job State Backup \\# Backup CronJob definitions apiVersion: b"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "cronjobs.docx",
+           "score": 7.2531,
+           "snippet": "## Disaster Recovery and Backup Strategies ### 1. Job State Backup \\# Backup CronJob definitions apiVersion: b"
+          },
+          {
+           "source": "job_management.html",
+           "score": 5.3353,
+           "snippet": "### Run a job using the Python SDK There are three ways to run a job when using the API. Scheduled . If the jo"
+          },
+          {
+           "source": "job_management.html",
+           "score": 5.2545,
+           "snippet": "### Example: Create a job using the CLI The following example uses the Databricks CLI to create a job. This jo"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 2.5027,
+           "snippet": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides C"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 2.3566,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 2.3215,
+           "snippet": "### Cleaning Up Before we finish, let's clean up the resources we created: kubectl delete job hello-job long-j"
+          }
+         ],
+         "fused": [
+          {
+           "source": "cronjobs.docx",
+           "score": 0.6429,
+           "snippet": "## Disaster Recovery and Backup Strategies ### 1. Job State Backup \\# Backup CronJob definitions apiVersion: b"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.6111,
+           "snippet": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduli"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.4167,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.4,
+           "snippet": "### 3. Machine Learning Model Training Scenario: Periodic model retraining with new data apiVersion: batch/v1"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.4,
+           "snippet": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides C"
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.3333,
+           "snippet": "### Run a job using the Python SDK There are three ways to run a job when using the API. Scheduled . If the jo"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.2576,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.25,
+           "snippet": "### Example: Create a job using the CLI The following example uses the Databricks CLI to create a job. This jo"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "cronjobs.docx",
+           "score": 0.9929,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e",
+           "fused_rank": 3
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.9812,
+           "snippet": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides C",
+           "fused_rank": 5
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.5978,
+           "snippet": "### 2. CronJob Not Creating Jobs Symptoms: CronJob exists but no Jobs are created CronJob Troubleshooting Flow",
+           "fused_rank": 10
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0617,
+           "snippet": "## Disaster Recovery and Backup Strategies ### 1. Job State Backup \\# Backup CronJob definitions apiVersion: b",
+           "fused_rank": 1
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0227,
+           "snippet": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduli",
+           "fused_rank": 2
+          }
+         ],
+         "chunks": [
+          {
+           "source": "cronjobs.docx",
+           "score": 0.9929,
+           "text": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform engineer, you’ve likely encountered scenarios where you need to run one-time tasks, batch jobs, or scheduled operations in your Kubernetes clusters. Unlike long-running services managed by Deployments or StatefulSets, these finite workloads require a different approach. Enter Kubernetes Jobs and CronJobs — powerful resources designed specifically for task-oriented workloads that run to completion. In this comprehensive guide, we’ll explore everything you need to know about Jobs and CronJobs, from basic concepts to advanced patterns, real-world use cases, troubleshooting strategies, and security considerations. Kubernetes Job Hierarchy ## Understanding Kubernetes Jobs ### What Are Jobs? A Kubernetes Job is a resource designed to run finite workloads that execute a task to co",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.9812,
+           "text": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides CronJobs. Let's create a simple CronJob: cd ~/project nano simple-cronjob.yaml Copy and paste the following YAML content: apiVersion: batch/v1 kind: CronJob metadata: name: simple-cronjob spec: schedule: \"*/1 * * * *\" ## Run every minute jobTemplate: spec: template: spec: containers: - name: hello image: busybox:1.28 command: [\"sh\", \"-c\", 'date; echo \"Hello from CronJob\"'] restartPolicy: Never Save the file and exit nano, then create the CronJob: kubectl apply -f simple-cronjob.yaml Check that the CronJob was created: kubectl get cronjobs You should see output similar to: NAME SCHEDULE SUSPEND ACTIVE LAST SCHEDULE AGE simple-cronjob */1 * * * * False 0 <none> 10s Wait a minute or two, then check for jobs cre",
+           "page": null,
+           "heading": "How to monitor Kubernetes job status and logs > Advanced Job Monitoring Techniques > Creating a CronJob for Scheduled Execution"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.5978,
+           "text": "### 2. CronJob Not Creating Jobs Symptoms: CronJob exists but no Jobs are created CronJob Troubleshooting Flowchart Diagnostic Steps: \\# Check CronJob status kubectl describe cronjob <cronjob-name> \\# Verify schedule syntax \\# Use online cron expression testers \\# Check controller manager logs kubectl logs -n kube-system deployment/kube-controller-manager Common Issues: \\# Issue: Invalid cron expression schedule: \"60 * * * *\" # Invalid - minute must be 0-59 \\# Fix: Correct expression schedule: \"0 * * * *\" # Every hour at minute 0 \\# Issue: Timezone problems schedule: \"0 9 * * *\" # Runs at 9 AM in cluster timezone \\# Fix: Specify timezone spec: timeZone: \"America/New_York\" schedule: \"0 9 * * *\" # Runs at 9 AM Eastern Time ### 3. Jobs Failing Due to Resource Limits Symptoms: Pods getting OOMKilled or CPU throttled Diagnostic Commands: \\# Check pod resource usa",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Troubleshooting Common Issues > 2. CronJob Not Creating Jobs"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0617,
+           "text": "## Disaster Recovery and Backup Strategies ### 1. Job State Backup \\# Backup CronJob definitions apiVersion: batch/v1 kind: CronJob metadata: name: backup-job-definitions spec: schedule: \"0 6 * * *\" # Daily at 6 AM jobTemplate: spec: template: spec: serviceAccountName: backup-sa containers: - name: backup-tool image: bitnami/kubectl:latest command: - sh - -c - | \\# Create backup directory with timestamp BACKUP_DATE=$(date +%Y%m%d-%H%M%S) mkdir -p /backup/$BACKUP_DATE \\# Backup all CronJobs kubectl get cronjobs --all-namespaces -o yaml > /backup/$BACKUP_DATE/cronjobs.yaml \\# Backup all Jobs (recent ones) kubectl get jobs --all-namespaces --field-selector=status.completionTime>$(date -d '7 days ago' -Iseconds) -o yaml > /backup/$BACKUP_DATE/recent-jobs.yaml \\# Backup ConfigMaps and Secrets used by jobs kubectl get configmaps,secrets --all-namespaces -l compone",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Disaster Recovery and Backup Strategies"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0227,
+           "text": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduling. It creates Job objects automatically based on a defined schedule using the familiar cron format. CronJob Architecture Flow ### Schedule Configuration The schedule field uses the standard cron format: \\# ┌───────────── minute (0 - 59) \\# │ ┌───────────── hour (0 - 23) \\# │ │ ┌───────────── day of the month (1 - 31) \\# │ │ │ ┌───────────── month (1 - 12) \\# │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday) \\# │ │ │ │ │ \\# * * * * * Common Schedule Examples: \\# Every minute schedule: \"* * * * *\" \\# Every hour at minute 0 schedule: \"0 * * * *\" \\# Daily at 2:30 AM schedule: \"30 2 * * *\" \\# Every Monday at 9:00 AM schedule: \"0 9 * * 1\" \\# Every 15 minutes schedule: \"*/15 * * * *\" \\# Shorthand expressions schedule: \"@hourly\" # Every hour",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Understanding CronJobs"
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 1,
+         "score": 0.9929,
+         "threshold": 0.05,
+         "verdict": "good",
+         "next": "answer"
+        },
+        {
+         "step": "llm",
+         "model": "openai/gpt-oss-120b",
+         "fallback": false,
+         "cache_hit": false,
+         "tokens_in": 2265,
+         "tokens_out": 127,
+         "ms": 1042,
+         "llm_calls": 1,
+         "grounded": true,
+         "context_chunks": 5
+        },
+        {
+         "step": "output_guard",
+         "blocked": false,
+         "rail": null,
+         "ms": 500,
+         "stored_in_cache": true,
+         "llm_calls": 1
+        }
+       ],
+       "total_ms": 2320,
+       "llm_calls": 3
+      },
+      "answer": "A **Kubernetes CronJob** is a lightweight wrapper around a Job that adds scheduling capabilities. It lets you define a cron‑style schedule (using the standard cron syntax or shorthand expressions) and automatically creates Job objects at the specified times. Each generated Job runs a pod to completion, just like a regular Job, but the CronJob ensures that these jobs are launched repeatedly according to the defined schedule. This makes CronJobs ideal for recurring tasks such as backups, report generation, or any periodic batch processing within a Kubernetes cluster.",
+      "session_id": "cap-followup-a",
+      "sources": [
+       "cronjobs.docx",
+       "monitor_job.docx"
+      ],
+      "thought_process": [
+       "Input guardrail: passed",
+       "Search: Kubernetes CronJob definition",
+       "Retrieval #1: 5 chunks, top score 0.993 (dropped 0, neutralized 0)"
+      ],
+      "status": "Response generated.",
+      "blocked": false,
+      "cache_hit": false,
+      "iterations": 1
+     }
+    },
+    {
+     "label": "Turn 2 (a follow-up)",
+     "question": "How do I schedule it to run every five minutes?",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": false,
+         "rail": null,
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 244,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": false,
+         "labels": {},
+         "logged_as": "How do I schedule it to run every five minutes?"
+        },
+        {
+         "step": "plan",
+         "intent": "search",
+         "original": "How do I schedule it to run every five minutes?",
+         "rewritten": "kubernetes cronjob schedule every five minutes",
+         "standalone": false,
+         "has_history": true,
+         "cache_hit": false,
+         "degraded": false,
+         "ms": 580,
+         "llm_calls": 1
+        },
+        {
+         "step": "retrieval",
+         "iteration": 1,
+         "query": "kubernetes cronjob schedule every five minutes",
+         "embed_ms": 2,
+         "search_ms": 17,
+         "rerank_ms": 183,
+         "ms": 202,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7918,
+           "snippet": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduli"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.7478,
+           "snippet": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides C"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7166,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7145,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7131,
+           "snippet": "### 2. Schedule Optimization for Cost Savings \\# Run during off-peak hours for cost savings apiVersion: batch/"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7033,
+           "snippet": "### 3. Machine Learning Model Training Scenario: Periodic model retraining with new data apiVersion: batch/v1"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "cronjobs.docx",
+           "score": 13.6324,
+           "snippet": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduli"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 11.8336,
+           "snippet": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides C"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 10.9764,
+           "snippet": "### 2. CronJob Not Creating Jobs Symptoms: CronJob exists but no Jobs are created CronJob Troubleshooting Flow"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 7.2567,
+           "snippet": "# DaemonSet Bypasses default scheduler Schedules a single instance on every host while adhering to tolerances"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 6.5535,
+           "snippet": "## Testing Strategies ### 1. Local Development with Kind \\# Create local cluster with Kind cat <<EOF | kind cr"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 5.8272,
+           "snippet": "### 3. Multi-Architecture Cost Optimization \\# Multi-arch deployment for cost optimization apiVersion: batch/v"
+          }
+         ],
+         "fused": [
+          {
+           "source": "cronjobs.docx",
+           "score": 1,
+           "snippet": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduli"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.6667,
+           "snippet": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides C"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.375,
+           "snippet": "### 2. CronJob Not Creating Jobs Symptoms: CronJob exists but no Jobs are created CronJob Troubleshooting Flow"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.3333,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.3,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.2778,
+           "snippet": "### 2. Schedule Optimization for Cost Savings \\# Run during off-peak hours for cost savings apiVersion: batch/"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.25,
+           "snippet": "# DaemonSet Bypasses default scheduler Schedules a single instance on every host while adhering to tolerances"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.2381,
+           "snippet": "## Testing Strategies ### 1. Local Development with Kind \\# Create local cluster with Kind cat <<EOF | kind cr"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "monitor_job.docx",
+           "score": 0.9926,
+           "snippet": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides C",
+           "fused_rank": 2
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.8799,
+           "snippet": "### 2. CronJob Not Creating Jobs Symptoms: CronJob exists but no Jobs are created CronJob Troubleshooting Flow",
+           "fused_rank": 3
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7307,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e",
+           "fused_rank": 5
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.658,
+           "snippet": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduli",
+           "fused_rank": 1
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0549,
+           "snippet": "### 2. Schedule Optimization for Cost Savings \\# Run during off-peak hours for cost savings apiVersion: batch/",
+           "fused_rank": 6
+          }
+         ],
+         "chunks": [
+          {
+           "source": "monitor_job.docx",
+           "score": 0.9926,
+           "text": "### Creating a CronJob for Scheduled Execution For tasks that need to run on a schedule, Kubernetes provides CronJobs. Let's create a simple CronJob: cd ~/project nano simple-cronjob.yaml Copy and paste the following YAML content: apiVersion: batch/v1 kind: CronJob metadata: name: simple-cronjob spec: schedule: \"*/1 * * * *\" ## Run every minute jobTemplate: spec: template: spec: containers: - name: hello image: busybox:1.28 command: [\"sh\", \"-c\", 'date; echo \"Hello from CronJob\"'] restartPolicy: Never Save the file and exit nano, then create the CronJob: kubectl apply -f simple-cronjob.yaml Check that the CronJob was created: kubectl get cronjobs You should see output similar to: NAME SCHEDULE SUSPEND ACTIVE LAST SCHEDULE AGE simple-cronjob */1 * * * * False 0 <none> 10s Wait a minute or two, then check for jobs cre",
+           "page": null,
+           "heading": "How to monitor Kubernetes job status and logs > Advanced Job Monitoring Techniques > Creating a CronJob for Scheduled Execution"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.8799,
+           "text": "### 2. CronJob Not Creating Jobs Symptoms: CronJob exists but no Jobs are created CronJob Troubleshooting Flowchart Diagnostic Steps: \\# Check CronJob status kubectl describe cronjob <cronjob-name> \\# Verify schedule syntax \\# Use online cron expression testers \\# Check controller manager logs kubectl logs -n kube-system deployment/kube-controller-manager Common Issues: \\# Issue: Invalid cron expression schedule: \"60 * * * *\" # Invalid - minute must be 0-59 \\# Fix: Correct expression schedule: \"0 * * * *\" # Every hour at minute 0 \\# Issue: Timezone problems schedule: \"0 9 * * *\" # Runs at 9 AM in cluster timezone \\# Fix: Specify timezone spec: timeZone: \"America/New_York\" schedule: \"0 9 * * *\" # Runs at 9 AM Eastern Time ### 3. Jobs Failing Due to Resource Limits Symptoms: Pods getting OOMKilled or CPU throttled Diagnostic Commands: \\# Check pod resource usa",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Troubleshooting Common Issues > 2. CronJob Not Creating Jobs"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.7307,
+           "text": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform engineer, you’ve likely encountered scenarios where you need to run one-time tasks, batch jobs, or scheduled operations in your Kubernetes clusters. Unlike long-running services managed by Deployments or StatefulSets, these finite workloads require a different approach. Enter Kubernetes Jobs and CronJobs — powerful resources designed specifically for task-oriented workloads that run to completion. In this comprehensive guide, we’ll explore everything you need to know about Jobs and CronJobs, from basic concepts to advanced patterns, real-world use cases, troubleshooting strategies, and security considerations. Kubernetes Job Hierarchy ## Understanding Kubernetes Jobs ### What Are Jobs? A Kubernetes Job is a resource designed to run finite workloads that execute a task to co",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.658,
+           "text": "## Understanding CronJobs ### What Are CronJobs? A CronJob is a thin wrapper around Jobs that enables scheduling. It creates Job objects automatically based on a defined schedule using the familiar cron format. CronJob Architecture Flow ### Schedule Configuration The schedule field uses the standard cron format: \\# ┌───────────── minute (0 - 59) \\# │ ┌───────────── hour (0 - 23) \\# │ │ ┌───────────── day of the month (1 - 31) \\# │ │ │ ┌───────────── month (1 - 12) \\# │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday) \\# │ │ │ │ │ \\# * * * * * Common Schedule Examples: \\# Every minute schedule: \"* * * * *\" \\# Every hour at minute 0 schedule: \"0 * * * *\" \\# Daily at 2:30 AM schedule: \"30 2 * * *\" \\# Every Monday at 9:00 AM schedule: \"0 9 * * 1\" \\# Every 15 minutes schedule: \"*/15 * * * *\" \\# Shorthand expressions schedule: \"@hourly\" # Every hour",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Understanding CronJobs"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0549,
+           "text": "### 2. Schedule Optimization for Cost Savings \\# Run during off-peak hours for cost savings apiVersion: batch/v1 kind: CronJob metadata: name: cost-effective-processing spec: \\# Run during off-peak hours (2-4 AM) schedule: \"0 2 * * *\" timeZone: \"UTC\" jobTemplate: spec: template: spec: \\# Prefer preemptible/spot instances affinity: nodeAffinity: preferredDuringSchedulingIgnoredDuringExecution: - weight: 100 preference: matchExpressions: - key: node-lifecycle operator: In values: [\"spot\", \"preemptible\"] containers: - name: batch-processor image: my-app:latest \\# Use burstable QoS for cost efficiency resources: requests: cpu: 500m memory: 1Gi limits: cpu: 2000m memory: 4Gi restartPolicy: OnFailure \\# Quick cleanup to minimize costs ttlSecondsAfterFinished: 3600 # Clean up after 1 hour \\# Minimal history for cost savings successfulJobsHistoryLimit: 1",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Cost Optimization > 2. Schedule Optimization for Cost Savings"
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 1,
+         "score": 0.9926,
+         "threshold": 0.05,
+         "verdict": "good",
+         "next": "answer"
+        },
+        {
+         "step": "llm",
+         "model": "openai/gpt-oss-120b",
+         "fallback": false,
+         "cache_hit": false,
+         "tokens_in": 2237,
+         "tokens_out": 311,
+         "ms": 1023,
+         "llm_calls": 1,
+         "grounded": true,
+         "context_chunks": 5
+        },
+        {
+         "step": "output_guard",
+         "blocked": false,
+         "rail": null,
+         "ms": 510,
+         "stored_in_cache": false,
+         "llm_calls": 1
+        }
+       ],
+       "total_ms": 2365,
+       "llm_calls": 4
+      },
+      "answer": "To run a CronJob every 5 minutes you set the **schedule** field to a cron expression that repeats at that interval.\n\n**Cron expression**\n\n```yaml\nschedule: \"*/5 * * * *\"\n```\n\n- `*/5` → every 5 minutes (0, 5, 10, 15 … 55)  \n- The remaining `*` values mean “every hour, every day, every month, every day‑of‑week”.\n\n**Full minimal example**\n\n```yaml\napiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: every‑5‑minutes\nspec:\n  schedule: \"*/5 * * * *\"      # ← runs every 5 minutes\n  jobTemplate:\n    spec:\n      template:\n        spec:\n          containers:\n          - name: hello\n            image: busybox:1.28\n            command: [\"sh\", \"-c\", 'date; echo \"Hello from every‑5‑minutes CronJob\"']\n          restartPolicy: Never\n```\n\nApply it with:\n\n```bash\nkubectl apply -f <file‑name>.yaml\n```\n\nAfter a minute you’ll see a Job created, and then a new Job will appear every five minutes. If you need to adjust the timezone, you can also add `timeZone:` under `spec`.",
+      "session_id": "cap-followup-a",
+      "sources": [
+       "cronjobs.docx",
+       "monitor_job.docx"
+      ],
+      "thought_process": [
+       "Input guardrail: passed",
+       "Search: kubernetes cronjob schedule every five minutes",
+       "Retrieval #1: 5 chunks, top score 0.993 (dropped 0, neutralized 0)"
+      ],
+      "status": "Response generated.",
+      "blocked": false,
+      "cache_hit": false,
+      "iterations": 1
+     }
+    }
+   ]
+  },
+  "unknown": {
+   "layout": "single",
+   "cases": [
+    {
+     "label": null,
+     "question": "How do I configure Istio mutual TLS between services?",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": false,
+         "rail": null,
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 619,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": false,
+         "labels": {},
+         "logged_as": "How do I configure Istio mutual TLS between services?"
+        },
+        {
+         "step": "plan",
+         "intent": "search",
+         "original": "How do I configure Istio mutual TLS between services?",
+         "rewritten": "configure Istio mutual TLS between services",
+         "standalone": true,
+         "has_history": false,
+         "cache_hit": true,
+         "degraded": false,
+         "ms": 11,
+         "llm_calls": 0
+        },
+        {
+         "step": "semantic_cache",
+         "hit": false,
+         "skipped": false,
+         "ms": 20
+        },
+        {
+         "step": "retrieval",
+         "iteration": 1,
+         "query": "configure Istio mutual TLS between services",
+         "embed_ms": 2,
+         "search_ms": 17,
+         "rerank_ms": 148,
+         "ms": 167,
+         "kept": 4,
+         "dropped": 1,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.6128,
+           "snippet": "# ConfigMaps and Secrets Can be used in Pod Config: Injected as a file Passed as an environment variable Used"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.5785,
+           "snippet": "### Step 2: Create a Service Create a file named nginx-service.yaml with the following content: apiVersion: v1"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5769,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5754,
+           "snippet": "# [Cluster]RoleBinding Can reference multiple subjects Subjects can be of kind: User Group ServiceAccount role"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.574,
+           "snippet": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5638,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "architecture.pptx",
+           "score": 5.5886,
+           "snippet": "# Service Acts as the unified method of accessing replicated pods. Four major Service Types: CluterIP - Expose"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 4.9525,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 4.383,
+           "snippet": "# Kubernetes A Comprehensive Overview Kubernetes v1.8 # Agenda Introduction Who am I? What is Kubernetes? What"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 3.9138,
+           "snippet": "### Alerting Strategy Create alerts for critical job failures: groups: - name: kubernetes-jobs rules: - alert:"
+          },
+          {
+           "source": "parallel_work_queue.txt",
+           "score": 3.4534,
+           "snippet": "FINE PARALLEL PROCESSING USING A WORK QUEUE =================================================================="
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 3.13,
+           "snippet": "# Volumes # Persistent Volumes PVs are a cluster-wide resource Not directly consumable by a Pod PV Parameters:"
+          }
+         ],
+         "fused": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.5909,
+           "snippet": "# Service Acts as the unified method of accessing replicated pods. Four major Service Types: CluterIP - Expose"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5714,
+           "snippet": "# ConfigMaps and Secrets Can be used in Pod Config: Injected as a file Passed as an environment variable Used"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.4762,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.4444,
+           "snippet": "### Step 2: Create a Service Create a file named nginx-service.yaml with the following content: apiVersion: v1"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.3125,
+           "snippet": "# Kubernetes A Comprehensive Overview Kubernetes v1.8 # Agenda Introduction Who am I? What is Kubernetes? What"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.3056,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.2714,
+           "snippet": "### Alerting Strategy Create alerts for critical job failures: groups: - name: kubernetes-jobs rules: - alert:"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.2095,
+           "snippet": "# Volumes # Persistent Volumes PVs are a cluster-wide resource Not directly consumable by a Pod PV Parameters:"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "snippet": "# ConfigMaps and Secrets Can be used in Pod Config: Injected as a file Passed as an environment variable Used",
+           "fused_rank": 2
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "snippet": "# Service Acts as the unified method of accessing replicated pods. Four major Service Types: CluterIP - Expose",
+           "fused_rank": 1
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I",
+           "fused_rank": 6
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0,
+           "snippet": "# Volumes # Persistent Volumes PVs are a cluster-wide resource Not directly consumable by a Pod PV Parameters:",
+           "fused_rank": 8
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t",
+           "fused_rank": 3
+          }
+         ],
+         "chunks": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "text": "# Service Acts as the unified method of accessing replicated pods. Four major Service Types: CluterIP - Exposes service on a strictly cluster-internal IP (default) NodePort - Service is exposed on each node’s IP on a statically defined port. LoadBalancer - Works in combination with a cloud provider to expose a service outside the cluster on a static external IP. ExternalName - used to references endpoints OUTSIDE the cluster by providing a static internally referenced DNS name. # Ingress Controller Deployed as a pod to one or more hosts Ingress controllers are an external controller with multiple options. Nginx HAproxy Contour Traefik Specific features and controller specific configuration is passed through annotations. # Concepts - Storage Volume - Storage that is tied to the Pod Lifecycle, consumable by one or more containers within the pod. PersistentVolume - A Persistent",
+           "page": null,
+           "heading": "Service"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0,
+           "text": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an IP; allowing for intrapod communication over localhost. Pods are given a cluster unique IP for the duration of its lifecycle, but the pods themselves are fundamentally ephemeral. Services are given a persistent cluster unique IP that spans the Pods lifecycle. External Connectivity is generally handed by an integrated cloud provider or other external entity (load balancer) # Networking - CNI Networking within Kubernetes is plumbed via the Container Network Interface (CNI), an interface between a container runtime and a network implementation plugin. Compatible CNI Network Plugins: Calico Cillium Contiv Contrail Flannel GCE kube-router Multus OpenVSwitch OVN Romana Weave # Kubernetes Concepts",
+           "page": null,
+           "heading": "Networking - Fundamentals Applied"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0,
+           "text": "# Volumes # Persistent Volumes PVs are a cluster-wide resource Not directly consumable by a Pod PV Parameters: Capacity accessModes ReadOnlyMany (ROX) ReadWriteOnce (RWO) ReadWriteMany (RWX) persistentVolumeReclaimPolicy Retain Recycle Delete StorageClass # Persistent Volume Claims PVCs are scoped to namespaces Supports accessModes like PVs Uses resource request model similar to Pods Claims will consume storage from matching PVs or StorageClasses based on storageClass and selectors. # Storage Classes Uses an external system defined by the provisioner to dynamically consume and allocate storage. Storage Class Fields Provisioner Parameters reclaimPolicy # Concepts - Configuration ConfigMap - Externalized data stored within kubernetes that can be referenced as a commandline argument, environment variable, or injected as a file into a volume mount. Ideal for separating containe",
+           "page": null,
+           "heading": "Volumes"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0,
+           "text": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod template used to generate the ReplicaSet. ReplicaSet Generated ReplicaSet from Deployment spec. # Concepts - Workloads (cont.) StatefulSet - A controller tailored to managing Pods that must persist or maintain state. Pod identity including hostname, network, and storage will be persisted. DaemonSet - Ensures that all nodes matching certain criteria will run an instance of a supplied Pod. Ideal for cluster wide services such as log forwarding, or health monitoring. # StatefulSet Attaches to ‘headeless service’ (not shown) nginx. Pods given unique ordinal names using the pattern <statefulset name>-<ordinal index>. Creates independent persistent volumes based on the ‘volumeClaimTemplates’.",
+           "page": null,
+           "heading": "Deployment"
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 1,
+         "score": 0.0001,
+         "threshold": 0.05,
+         "verdict": "poor",
+         "next": "rewrite the query and retry"
+        },
+        {
+         "step": "rewrite",
+         "previous": "configure Istio mutual TLS between services",
+         "new": "Istio mutual TLS configuration between microservices documentation",
+         "model": "openai/gpt-oss-20b",
+         "ms": 473,
+         "llm_calls": 1
+        },
+        {
+         "step": "retrieval",
+         "iteration": 2,
+         "query": "Istio mutual TLS configuration between microservices documentation",
+         "embed_ms": 1,
+         "search_ms": 15,
+         "rerank_ms": 172,
+         "ms": 188,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.6232,
+           "snippet": "# ConfigMaps and Secrets Can be used in Pod Config: Injected as a file Passed as an environment variable Used"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.6037,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.6016,
+           "snippet": "### 4. Network Policies Restrict job network access: apiVersion: networking.k8s.io/v1 kind: NetworkPolicy meta"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.5978,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5962,
+           "snippet": "# [Cluster]RoleBinding Can reference multiple subjects Subjects can be of kind: User Group ServiceAccount role"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.595,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "parallel_work_queue.txt",
+           "score": 4.843,
+           "snippet": "FINE PARALLEL PROCESSING USING A WORK QUEUE =================================================================="
+          },
+          {
+           "source": "job_management.html",
+           "score": 4.592,
+           "snippet": "### Run a job using the Python SDK There are three ways to run a job when using the API. Scheduled . If the jo"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 3.13,
+           "snippet": "# Volumes # Persistent Volumes PVs are a cluster-wide resource Not directly consumable by a Pod PV Parameters:"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 2.9617,
+           "snippet": "## Creating Your First Kubernetes Job In this step, we'll create a simple Kubernetes job that will run a conta"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 2.9083,
+           "snippet": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed"
+          },
+          {
+           "source": "job_management.html",
+           "score": 2.8397,
+           "snippet": "## View jobs as code From the Databricks workspace you can view the JSON, YAML, or Python representation of a"
+          }
+         ],
+         "fused": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.5,
+           "snippet": "# ConfigMaps and Secrets Can be used in Pod Config: Injected as a file Passed as an environment variable Used"
+          },
+          {
+           "source": "parallel_work_queue.txt",
+           "score": 0.5,
+           "snippet": "FINE PARALLEL PROCESSING USING A WORK QUEUE =================================================================="
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.3333,
+           "snippet": "### Run a job using the Python SDK There are three ways to run a job when using the API. Scheduled . If the jo"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.3333,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.2845,
+           "snippet": "# Volumes # Persistent Volumes PVs are a cluster-wide resource Not directly consumable by a Pod PV Parameters:"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.254,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.25,
+           "snippet": "### 4. Network Policies Restrict job network access: apiVersion: networking.k8s.io/v1 kind: NetworkPolicy meta"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.2,
+           "snippet": "# Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide ## Introduction As a platform e"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.0005,
+           "snippet": "# Volumes # Persistent Volumes PVs are a cluster-wide resource Not directly consumable by a Pod PV Parameters:",
+           "fused_rank": 5
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t",
+           "fused_rank": 6
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.0001,
+           "snippet": "## Creating Your First Kubernetes Job In this step, we'll create a simple Kubernetes job that will run a conta",
+           "fused_rank": 9
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "snippet": "# Kubernetes A Comprehensive Overview Kubernetes v1.8 # Agenda Introduction Who am I? What is Kubernetes? What",
+           "fused_rank": 10
+          },
+          {
+           "source": "parallel_work_queue.txt",
+           "score": 0.0001,
+           "snippet": "FINE PARALLEL PROCESSING USING A WORK QUEUE ==================================================================",
+           "fused_rank": 2
+          }
+         ],
+         "chunks": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.0005,
+           "text": "# Volumes # Persistent Volumes PVs are a cluster-wide resource Not directly consumable by a Pod PV Parameters: Capacity accessModes ReadOnlyMany (ROX) ReadWriteOnce (RWO) ReadWriteMany (RWX) persistentVolumeReclaimPolicy Retain Recycle Delete StorageClass # Persistent Volume Claims PVCs are scoped to namespaces Supports accessModes like PVs Uses resource request model similar to Pods Claims will consume storage from matching PVs or StorageClasses based on storageClass and selectors. # Storage Classes Uses an external system defined by the provisioner to dynamically consume and allocate storage. Storage Class Fields Provisioner Parameters reclaimPolicy # Concepts - Configuration ConfigMap - Externalized data stored within kubernetes that can be referenced as a commandline argument, environment variable, or injected as a file into a volume mount. Ideal for separating containe",
+           "page": null,
+           "heading": "Volumes"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "text": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod template used to generate the ReplicaSet. ReplicaSet Generated ReplicaSet from Deployment spec. # Concepts - Workloads (cont.) StatefulSet - A controller tailored to managing Pods that must persist or maintain state. Pod identity including hostname, network, and storage will be persisted. DaemonSet - Ensures that all nodes matching certain criteria will run an instance of a supplied Pod. Ideal for cluster wide services such as log forwarding, or health monitoring. # StatefulSet Attaches to ‘headeless service’ (not shown) nginx. Pods given unique ordinal names using the pattern <statefulset name>-<ordinal index>. Creates independent persistent volumes based on the ‘volumeClaimTemplates’.",
+           "page": null,
+           "heading": "Deployment"
+          },
+          {
+           "source": "monitor_job.docx",
+           "score": 0.0001,
+           "text": "## Creating Your First Kubernetes Job In this step, we'll create a simple Kubernetes job that will run a container, perform a task, and then complete. This will give us something to monitor in the following steps. ### Understanding Kubernetes Jobs A Kubernetes Job is a controller that creates one or more pods and ensures they successfully terminate. Jobs are useful for batch processes, one-time tasks, or any task that should run to completion rather than indefinitely. ### Creating a Job Configuration File Let's create a simple job configuration file. Open a terminal and create a new file called hello-job.yaml in your project directory: cd ~/project nano hello-job.yaml Copy and paste the following YAML content into the file: apiVersion: batch/v1 kind: Job metadata: name: hello-job spec: template: spec: containers: - name: hello image: busybox:1.28 command: [\"sh\", \"-c\",",
+           "page": null,
+           "heading": "How to monitor Kubernetes job status and logs > Creating Your First Kubernetes Job"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "text": "# Kubernetes A Comprehensive Overview Kubernetes v1.8 # Agenda Introduction Who am I? What is Kubernetes? What does Kubernetes do? Architecture Master Components Node Components Additional Services Networking Concepts Core Workloads Network Storage Configuration Auth and Identity Behind the Scenes Deployment from Beginning to End # Introduction # Intro - What is Kubernetes? Kubernetes or K8s was a project spun out of Google as a open source next-gen container scheduler designed with the lessons learned from developing and managing Borg and Omega. Kubernetes was designed from the ground-up as a loosely coupled collection of components centered around deploying, maintaining, and scaling applications. # Intro - What Does Kubernetes do? Kubernetes is the linux kernel of distributed systems. It abstracts away the underlying hardware of the nodes and provides a uniform interface f",
+           "page": null,
+           "heading": "Kubernetes"
+          },
+          {
+           "source": "parallel_work_queue.txt",
+           "score": 0.0001,
+           "text": "FINE PARALLEL PROCESSING USING A WORK QUEUE ================================================================================ In this example, you will run a Kubernetes Job that runs multiple parallel tasks as worker processes, each running as a separate Pod. In this example, as each pod is created, it picks up one unit of work from a task queue, processes it, and repeats until the end of the queue is reached. OVERVIEW OF STEPS -------------------------------------------------------------------------------- 1. Start a storage service to hold the work queue. (We will use Redis). 2. Create a queue, and fill it with messages. 3. Start a Job that works on tasks from the queue. BEFORE YOU BEGIN -------------------------------------------------------------------------------- You need to have a Kubernetes cluster, and the kubectl command-line tool must be configured. You will need a contain",
+           "page": null,
+           "heading": ""
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 2,
+         "score": 0.0005,
+         "threshold": 0.05,
+         "verdict": "poor",
+         "next": "give up (nothing relevant enough)"
+        },
+        {
+         "step": "decline",
+         "reason": "poor retrieval after 2 iterations"
+        }
+       ],
+       "total_ms": 1524,
+       "llm_calls": 2
+      },
+      "answer": "I couldn't find relevant information in the knowledge base to answer that question.",
+      "session_id": "cap-unknown-a-0",
+      "sources": [],
+      "thought_process": [
+       "Input guardrail: passed",
+       "Search: configure Istio mutual TLS between services",
+       "Retrieval #1: 4 chunks, top score 0.000 (dropped 1, neutralized 0)",
+       "Rewrote query: Istio mutual TLS configuration between microservices documentation",
+       "Retrieval #2: 5 chunks, top score 0.001 (dropped 0, neutralized 0)",
+       "No context (poor retrieval after 2 iterations)"
+      ],
+      "status": "No relevant context.",
+      "blocked": false,
+      "cache_hit": false,
+      "iterations": 2
+     }
+    }
+   ]
+  },
+  "offtopic": {
+   "layout": "single",
+   "cases": [
+    {
+     "label": null,
+     "question": "Write me a poem about the ocean.",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": true,
+         "rail": "self check input",
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 421,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": false,
+         "labels": {},
+         "logged_as": "Write me a poem about the ocean."
+        }
+       ],
+       "total_ms": 430,
+       "llm_calls": 1
+      },
+      "answer": "I'm sorry, I can't help with that request.",
+      "session_id": "cap-offtopic-a-0",
+      "sources": [],
+      "thought_process": [
+       "Input guardrail: blocked",
+       "Retrieval: skipped"
+      ],
+      "status": "Blocked by guardrails.",
+      "blocked": true,
+      "cache_hit": false,
+      "iterations": 0
+     }
+    }
+   ]
+  },
+  "pii": {
+   "layout": "single",
+   "cases": [
+    {
+     "label": null,
+     "question": "I am jane.doe@example.com. How does the horizontal pod autoscaler decide when to scale?",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": false,
+         "rail": null,
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 414,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": true,
+         "labels": {
+          "EMAIL": 1
+         },
+         "logged_as": "I am [REDACTED:EMAIL]. How does the horizontal pod autoscaler decide when to scale?"
+        },
+        {
+         "step": "plan",
+         "intent": "search",
+         "original": "I am jane.doe@example.com. How does the horizontal pod autoscaler decide when to scale?",
+         "rewritten": "how does horizontal pod autoscaler decide when to scale",
+         "standalone": true,
+         "has_history": false,
+         "cache_hit": true,
+         "degraded": false,
+         "ms": 11,
+         "llm_calls": 0
+        },
+        {
+         "step": "semantic_cache",
+         "hit": false,
+         "skipped": false,
+         "ms": 22
+        },
+        {
+         "step": "retrieval",
+         "iteration": 1,
+         "query": "how does horizontal pod autoscaler decide when to scale",
+         "embed_ms": 2,
+         "search_ms": 13,
+         "rerank_ms": 186,
+         "ms": 201,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.7865,
+           "snippet": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.731,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.7171,
+           "snippet": "### Advantages of HPA Elasticity : Automatically adjusts the number of pods to meet current demand. Cost-Effic"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.717,
+           "snippet": "A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers # ⎈ A Hands-On Guide to Kubernetes Horizo"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.7009,
+           "snippet": "### Step 4: Testing Now, let’s test the HPA by increasing the load on the hpa-deploy deployment. We'll use the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.6981,
+           "snippet": "## Vertical Pod Autoscaling (VPA) ### What is VPA? Vertical Pod Autoscaling (VPA) adjusts the CPU and memory r"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 10.8888,
+           "snippet": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 10.2406,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 9.992,
+           "snippet": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 8.0297,
+           "snippet": "### Step 2: Create a Service Create a file named nginx-service.yaml with the following content: apiVersion: v1"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 7.0875,
+           "snippet": "### Step 2: Create a Deployment Create a file named vpa-deployment.yaml with the following content: apiVersion"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 6.9598,
+           "snippet": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s"
+          }
+         ],
+         "fused": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 1,
+           "snippet": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.6667,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.3409,
+           "snippet": "### Advantages of HPA Elasticity : Automatically adjusts the number of pods to meet current demand. Cost-Effic"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.3111,
+           "snippet": "### Step 2: Create a Service Create a file named nginx-service.yaml with the following content: apiVersion: v1"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.3111,
+           "snippet": "A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers # ⎈ A Hands-On Guide to Kubernetes Horizo"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.3056,
+           "snippet": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.2917,
+           "snippet": "### Step 4: Testing Now, let’s test the HPA by increasing the load on the hpa-deploy deployment. We'll use the"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.2338,
+           "snippet": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9989,
+           "snippet": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the",
+           "fused_rank": 1
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9936,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA",
+           "fused_rank": 2
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.99,
+           "snippet": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s",
+           "fused_rank": 8
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9879,
+           "snippet": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed",
+           "fused_rank": 6
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9778,
+           "snippet": "A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers # ⎈ A Hands-On Guide to Kubernetes Horizo",
+           "fused_rank": 5
+          }
+         ],
+         "chunks": [
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9989,
+           "text": "## Horizontal Pod Autoscaling (HPA) ### What is HPA? Horizontal Pod Autoscaling (HPA) automatically scales the number of pods in a replication controller, deployment, or replica set based on observed CPU utilization (or other select metrics). This allows your application to scale out (add more pods) or scale in (reduce the number of pods) in response to load changes. ### How Does HPA Work? HPA operates by: Monitoring Metrics: HPA continuously monitors the specified metrics (e.g., CPU usage, memory usage, custom metrics). Evaluating Thresholds: It compares the current metric values against predefined thresholds. Scaling Pods: If the metric values exceed the thresholds, HPA increases the number of pods. Conversely, if the values drop below the thresholds, it decreases the number of pods.",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > Horizontal Pod Autoscaling (HPA)"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9936,
+           "text": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA is ideal for stateless applications that can easily scale horizontally by adding more pods. It’s useful when you need to handle variable workloads and ensure high availability. VPA is suitable for applications where scaling horizontally is not feasible or when you need to optimize resource usage for individual pods. It’s beneficial for stateful applications or those with varying resource needs. ... ## Conclusion Kubernetes autoscaling, through HPA and VPA, provides robust mechanisms to manage application scalability and resource optimization. By understanding and implementing these autoscaling strategies, you can ensure that your applications are resilient, performant, and cost-effective. ...",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > HPA vs. VPA: Which One to Use?"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.99,
+           "text": "## Metric Server Setup Before testing Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) , it’s essential to have the Metrics Server installed in your Kubernetes cluster. The Metrics Server collects resource usage metrics from the cluster’s nodes and pods, which are necessary for autoscaling decisions. You can install the Metrics Server using either a YAML manifest or the official Helm chart. To install the latest release of the Metrics Server from the YAML manifest, follow these steps: Download the Components Manifest: Use kubectl apply to download and apply the Components manifest directly from the latest release of the Metrics Server: $ kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml This command fetches the YAML manifest for the latest release of the Metrics Server from its GitHub repository and applies i",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > Metric Server Setup"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9879,
+           "text": "### Exclude scaling for a specific container To exclude scaling for a specific container within a pod managed by the VerticalPodAutoscaler (VPA), you can set the mode for that container to “Off”. This ensures that the VPA does not adjust the resource requests for that particular container. Here’s an example configuration: apiVersion: autoscaling.k8s.io/v1 kind: VerticalPodAutoscaler . . . resourcePolicy: containerPolicies: - containerName: <container_name> mode: \"Off\" In this example: <container_name> refers to the name of the container within the pod for which you want to exclude scaling. mode: \"Off\" specifies that the VPA should not apply any autoscaling actions to this particular container. By configuring the VPA in this way, you can ensure that only specific containers within your pods are subject to autoscaling, while others remain unaffected. This flexibility allows you to fi",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > Practical Example of VPA > Exclude scaling for a specific container"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.9778,
+           "text": "A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers # ⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ ### ⇢ HPA & VPA in Kubernetes with a Practical Example Anvesh Muppeda Jun 3, 2024 · 11 min read HPA & VPA in Kubernetes by Anvesh Muppeda In the world of container orchestration, Kubernetes has emerged as the de facto standard. One of its powerful features is autoscaling, which helps maintain application performance and optimize resource usage. In this post, we’ll dive into two main types of autoscaling in Kubernetes: Horizontal Pod Autoscaling (HPA) and Vertical Pod Autoscaling (VPA) . ## Introduction to Kubernetes Autoscaling Autoscaling in Kubernetes ensures that your application can handle varying loads by automatically adjusting the number of running pods or the resources allocated to them. This dynamic adjustment is crucial for mai",
+           "page": null,
+           "heading": ""
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 1,
+         "score": 0.9989,
+         "threshold": 0.05,
+         "verdict": "good",
+         "next": "answer"
+        },
+        {
+         "step": "llm",
+         "model": "openai/gpt-oss-120b",
+         "fallback": false,
+         "cache_hit": false,
+         "tokens_in": 1353,
+         "tokens_out": 183,
+         "ms": 807,
+         "llm_calls": 1,
+         "grounded": true,
+         "context_chunks": 5
+        },
+        {
+         "step": "output_guard",
+         "blocked": false,
+         "rail": null,
+         "ms": 545,
+         "stored_in_cache": true,
+         "llm_calls": 1
+        }
+       ],
+       "total_ms": 2058,
+       "llm_calls": 3
+      },
+      "answer": "The Horizontal Pod Autoscaler continuously watches the metrics you’ve configured (by default CPU utilization, but it can also use memory or custom metrics). It compares the current values of those metrics against the thresholds you’ve defined in the HPA spec.  \n\n- **If the observed metric(s) rise above the target threshold**, the HPA calculates how many additional pods are needed and increases the replica count.  \n- **If the metric(s) fall below the threshold**, it reduces the number of replicas accordingly.  \n\nIn short, the HPA decides to scale up or down by monitoring the selected metrics, evaluating them against the configured target values, and then adjusting the pod count to keep the metrics close to those targets.",
+      "session_id": "cap-pii-a-0",
+      "sources": [
+       "pods_autoscale.html"
+      ],
+      "thought_process": [
+       "Input guardrail: passed",
+       "Search: how does horizontal pod autoscaler decide when to scale",
+       "Retrieval #1: 5 chunks, top score 0.999 (dropped 0, neutralized 0)"
+      ],
+      "status": "Response generated.",
+      "blocked": false,
+      "cache_hit": false,
+      "iterations": 1
+     }
+    }
+   ]
+  },
+  "tenants": {
+   "layout": "compare",
+   "cases": [
+    {
+     "label": "Tenant A · Kubernetes documents",
+     "question": "What is the Data Plane Development Kit (DPDK) used for?",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": false,
+         "rail": null,
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 443,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": false,
+         "labels": {},
+         "logged_as": "What is the Data Plane Development Kit (DPDK) used for?"
+        },
+        {
+         "step": "plan",
+         "intent": "search",
+         "original": "What is the Data Plane Development Kit (DPDK) used for?",
+         "rewritten": "What is the Data Plane Development Kit (DPDK) used for?",
+         "standalone": true,
+         "has_history": false,
+         "cache_hit": false,
+         "degraded": false,
+         "ms": 539,
+         "llm_calls": 1
+        },
+        {
+         "step": "semantic_cache",
+         "hit": false,
+         "skipped": false,
+         "ms": 1114
+        },
+        {
+         "step": "retrieval",
+         "iteration": 1,
+         "query": "What is the Data Plane Development Kit (DPDK) used for?",
+         "embed_ms": 2,
+         "search_ms": 9,
+         "rerank_ms": 168,
+         "ms": 179,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.608,
+           "snippet": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) com"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.6025,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5971,
+           "snippet": "# Slide 12 etcd Etcd acts as the cluster datastore; providing a strong, consistent and highly available key-va"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5907,
+           "snippet": "# Kubernetes A Comprehensive Overview Kubernetes v1.8 # Agenda Introduction Who am I? What is Kubernetes? What"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5892,
+           "snippet": "# kube-scheduler Kube-scheduler is a verbose policy-rich engine that evaluates workload requirements and attem"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5823,
+           "snippet": "# Architecture Overview Masters - Acts as the primary control plane for Kubernetes. Masters are responsible at"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "architecture.pptx",
+           "score": 6.2777,
+           "snippet": "# Kubernetes Concepts - Core Cluster - A collection of hosts that aggregate their available resources includin"
+          },
+          {
+           "source": "job_management.html",
+           "score": 5.4206,
+           "snippet": "# Automate job creation and management This article shows you how to get started with developer tools to autom"
+          },
+          {
+           "source": "job_management.html",
+           "score": 4.9767,
+           "snippet": "## Get started with the Databricks SDK Databricks provides SDKs that allow you to automate operations using po"
+          },
+          {
+           "source": "job_management.html",
+           "score": 4.9204,
+           "snippet": "## Clean up To delete any jobs you just created, run databricks jobs delete <job-id> from the Databricks CLI o"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 4.8823,
+           "snippet": "## Testing Strategies ### 1. Local Development with Kind \\# Create local cluster with Kind cat <<EOF | kind cr"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 4.7712,
+           "snippet": "# Architecture Overview Masters - Acts as the primary control plane for Kubernetes. Masters are responsible at"
+          }
+         ],
+         "fused": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.5909,
+           "snippet": "# Kubernetes Concepts - Core Cluster - A collection of hosts that aggregate their available resources includin"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5,
+           "snippet": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) com"
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.3718,
+           "snippet": "# Automate job creation and management This article shows you how to get started with developer tools to autom"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.3333,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.2909,
+           "snippet": "# Kubernetes A Comprehensive Overview Kubernetes v1.8 # Agenda Introduction Who am I? What is Kubernetes? What"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.2857,
+           "snippet": "# Architecture Overview Masters - Acts as the primary control plane for Kubernetes. Masters are responsible at"
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.25,
+           "snippet": "## Get started with the Databricks SDK Databricks provides SDKs that allow you to automate operations using po"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.25,
+           "snippet": "# Slide 12 etcd Etcd acts as the cluster datastore; providing a strong, consistent and highly available key-va"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "job_management.html",
+           "score": 0.0007,
+           "snippet": "# Automate job creation and management This article shows you how to get started with developer tools to autom",
+           "fused_rank": 3
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.0005,
+           "snippet": "## Get started with the Databricks SDK Databricks provides SDKs that allow you to automate operations using po",
+           "fused_rank": 7
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.0001,
+           "snippet": "## Clean up To delete any jobs you just created, run databricks jobs delete <job-id> from the Databricks CLI o",
+           "fused_rank": 9
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "snippet": "# Architecture Overview Masters - Acts as the primary control plane for Kubernetes. Masters are responsible at",
+           "fused_rank": 6
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "snippet": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) com",
+           "fused_rank": 2
+          }
+         ],
+         "chunks": [
+          {
+           "source": "job_management.html",
+           "score": 0.0007,
+           "text": "# Automate job creation and management This article shows you how to get started with developer tools to automate the creation and management of jobs. It introduces you to the Databricks CLI, the Databricks SDKs, and the REST API. Note: This article provides examples for creating and managing jobs using the Databricks CLI, the Databricks Python SDK, and the REST API as an easy introduction to those tools. To programmatically manage jobs as part of CI/CD use Databricks Asset Bundles or the Databricks Terraform provider . ## Compare tools The following table compares the Databricks CLI, the Databricks SDKs, and the REST API for programmatically creating and managing jobs. To learn about all available developer tools, see Local development tools . Tool Description Databricks CLI Access Databricks functionality using the Databricks command-line interface (CLI), which wraps the REST A",
+           "page": null,
+           "heading": "Automate job creation and management"
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.0005,
+           "text": "## Get started with the Databricks SDK Databricks provides SDKs that allow you to automate operations using popular programming languages such as Python, Java, and Go. This section shows you how to get started using the Python SDK to create and manage jobs on Databricks. You can use the Databricks SDK from your Databricks notebook or from your local development machine. If you are using your local development machine, ensure you first complete Get started with the Databricks SDK for Python . Note: If you are developing from a Databricks notebook and are using a cluster that uses Databricks Runtime 12.2 LTS and below, you must install the Databricks SDK for Python first. See Install or upgrade the Databricks SDK for Python . ### Example: Create a job using the Python SDK The following example notebook code creates a job that runs an existing notebook. It retrieves the existing notebo",
+           "page": null,
+           "heading": "Automate job creation and management > Get started with the Databricks SDK"
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.0001,
+           "text": "## Clean up To delete any jobs you just created, run databricks jobs delete <job-id> from the Databricks CLI or delete the job directly from the Databricks workspace UI. ## Next steps To learn more about the Databricks CLI, see What is the Databricks CLI? and Databricks CLI commands to learn about other command groups. To learn more about the Databricks SDK, see Databricks SDKs . To learn more about CI/CD using Databricks refer to Databricks Asset Bundles and Databricks Terraform provider and Terraform CDKTF for Databricks. For a comprehensive overview of all developer tooling, see Local development tools .",
+           "page": null,
+           "heading": "Automate job creation and management > Clean up"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "text": "# Architecture Overview Masters - Acts as the primary control plane for Kubernetes. Masters are responsible at a minimum for running the API Server, scheduler, and cluster controller. They commonly also manage storing cluster state, cloud-provider specific components and other cluster essential services. Nodes - Are the ‘workers’ of a Kubernetes cluster. They run a minimal agent that manages the node itself, and are tasked with executing workloads as designated by the master. # Architecture Overview # Slide 9 Master Components # Master Components Kube-apiserver Etcd Kube-controller-manager Cloud-controller-manager Kube-scheduler # kube-apiserver The apiserver provides a forward facing REST interface into the kubernetes control plane and datastore. All clients, including nodes, users and other applications interact with kubernetes strictly through the API Server. It is the",
+           "page": null,
+           "heading": "Architecture Overview"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0001,
+           "text": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) compatible application that executes and manages containers. Containerd (docker) Cri-o Rkt Kata (formerly clear and hyper) Virtlet (VM CRI compatible runtime) # Additional Services Kube-dns - Provides cluster wide DNS Services. Services are resolvable to <service>.<namespace>.[removed]. Heapster - Metrics Collector for kubernetes cluster, used by some resources such as the Horizontal Pod Autoscaler. (required for kubedashboard metrics) Kube-dashboard - A general purpose web based UI for kubernetes. # Slide 22 Networking # Networking - Fundamental Rules All Pods can communicate with all other Pods without NAT All nodes can communicate with all Pods (and vice-versa) without NAT. The IP that a Pod sees itself as is the same IP that others see it as.",
+           "page": null,
+           "heading": "Container Runtime"
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 1,
+         "score": 0.0007,
+         "threshold": 0.05,
+         "verdict": "poor",
+         "next": "rewrite the query and retry"
+        },
+        {
+         "step": "rewrite",
+         "previous": "What is the Data Plane Development Kit (DPDK) used for?",
+         "new": "Data Plane Development Kit (DPDK) purpose and use cases in high‑performance networking.",
+         "model": "openai/gpt-oss-20b",
+         "ms": 325,
+         "llm_calls": 1
+        },
+        {
+         "step": "retrieval",
+         "iteration": 2,
+         "query": "Data Plane Development Kit (DPDK) purpose and use cases in high‑performance networking.",
+         "embed_ms": 755,
+         "search_ms": 11,
+         "rerank_ms": 81,
+         "ms": 847,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.6096,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5959,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5903,
+           "snippet": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) com"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.5836,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5781,
+           "snippet": "# DaemonSet Bypasses default scheduler Schedules a single instance on every host while adhering to tolerances"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.5775,
+           "snippet": "### 2. Efficient Container Images \\# Multi-stage build for smaller images FROM golang:1.19-alpine AS builder W"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "job_management.html",
+           "score": 9.3208,
+           "snippet": "# Automate job creation and management This article shows you how to get started with developer tools to autom"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 8.1505,
+           "snippet": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) com"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 7.0742,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 6.6696,
+           "snippet": "### 3. Machine Learning Model Training Scenario: Periodic model retraining with new data apiVersion: batch/v1"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 6.6315,
+           "snippet": "### 4. Jobs Taking Too Long Symptoms: Jobs running longer than expected Solutions: \\# Set active deadline spec"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 6.5534,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA"
+          }
+         ],
+         "fused": [
+          {
+           "source": "architecture.pptx",
+           "score": 0.5833,
+           "snippet": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) com"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.5385,
+           "snippet": "# Networking - Fundamentals Applied Containers in a pod exist within the same network namespace and share an I"
+          },
+          {
+           "source": "job_management.html",
+           "score": 0.537,
+           "snippet": "# Automate job creation and management This article shows you how to get started with developer tools to autom"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.45,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.3656,
+           "snippet": "# Deployment Contains configuration of how updates or ‘deployments’ should be managed in addition to the pod t"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.2625,
+           "snippet": "### 3. Machine Learning Model Training Scenario: Periodic model retraining with new data apiVersion: batch/v1"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.2361,
+           "snippet": "# Kubernetes A Comprehensive Overview Kubernetes v1.8 # Agenda Introduction Who am I? What is Kubernetes? What"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.2262,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "job_management.html",
+           "score": 0.0027,
+           "snippet": "# Automate job creation and management This article shows you how to get started with developer tools to autom",
+           "fused_rank": 3
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0004,
+           "snippet": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing custom",
+           "fused_rank": 4
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.0003,
+           "snippet": "### Advantages of HPA Elasticity : Automatically adjusts the number of pods to meet current demand. Cost-Effic",
+           "fused_rank": 10
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0002,
+           "snippet": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) com",
+           "fused_rank": 1
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.0001,
+           "snippet": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA",
+           "fused_rank": 8
+          }
+         ],
+         "chunks": [
+          {
+           "source": "job_management.html",
+           "score": 0.0027,
+           "text": "# Automate job creation and management This article shows you how to get started with developer tools to automate the creation and management of jobs. It introduces you to the Databricks CLI, the Databricks SDKs, and the REST API. Note: This article provides examples for creating and managing jobs using the Databricks CLI, the Databricks Python SDK, and the REST API as an easy introduction to those tools. To programmatically manage jobs as part of CI/CD use Databricks Asset Bundles or the Databricks Terraform provider . ## Compare tools The following table compares the Databricks CLI, the Databricks SDKs, and the REST API for programmatically creating and managing jobs. To learn about all available developer tools, see Local development tools . Tool Description Databricks CLI Access Databricks functionality using the Databricks command-line interface (CLI), which wraps the REST A",
+           "page": null,
+           "heading": "Automate job creation and management"
+          },
+          {
+           "source": "cronjobs.docx",
+           "score": 0.0004,
+           "text": "## Real-World Use Cases and Patterns ### 1. Data Processing Pipeline Scenario: Daily ETL job processing customer data apiVersion: batch/v1 kind: CronJob metadata: name: etl-customer-data spec: schedule: \"0 1 * * *\" # Daily at 1 AM jobTemplate: spec: template: spec: containers: - name: etl-processor image: my-company/etl-tool:v2.1.0 command: [\"python\", \"etl_pipeline.py\"] env: - name: PROCESSING_DATE value: \"$(date -d 'yesterday' +%Y-%m-%d)\" - name: BATCH_SIZE value: \"1000\" resources: requests: cpu: 1000m memory: 2Gi limits: cpu: 2000m memory: 4Gi restartPolicy: OnFailure backoffLimit: 2 successfulJobsHistoryLimit: 7 failedJobsHistoryLimit: 3 ETL Pipeline Flow ### 2. Database Maintenance Scenario: Weekly database cleanup and optimization apiVersion: batch/v1 kind: CronJob metadata: name: db-maintenance spec: schedule: \"0 3 * * 0\" # Sundays at 3 AM",
+           "page": null,
+           "heading": "Mastering Kubernetes Jobs and CronJobs: A Platform Engineer’s Complete Guide > Real-World Use Cases and Patterns"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.0003,
+           "text": "### Advantages of HPA Elasticity : Automatically adjusts the number of pods to meet current demand. Cost-Efficiency: Optimizes resource usage by adding or removing pods as needed. Performance : Helps maintain application performance during high traffic periods. ## HPA Practical Example To set up HPA, you need to define an HPA object in your Kubernetes cluster. Let’s deploy an example using HPA . ### Step 1: Create a Deployment Create a file named hpa-deployment.yaml with the following content: apiVersion: apps/v1 kind: Deployment metadata: name: hpa-deploy spec: replicas: 1 selector: matchLabels: app: nginx template: metadata: labels: app: nginx spec: containers: - name: nginx image: nginx resources: requests: cpu: \"25m\" limits: cpu: \"200m\" Apply the deployment: kubectl apply -f hpa-deployment.yaml",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > Horizontal Pod Autoscaling (HPA) > Advantages of HPA"
+          },
+          {
+           "source": "architecture.pptx",
+           "score": 0.0002,
+           "text": "# Container Runtime With respect to Kubernetes, A container runtime is a CRI (Container Runtime Interface) compatible application that executes and manages containers. Containerd (docker) Cri-o Rkt Kata (formerly clear and hyper) Virtlet (VM CRI compatible runtime) # Additional Services Kube-dns - Provides cluster wide DNS Services. Services are resolvable to <service>.<namespace>.[removed]. Heapster - Metrics Collector for kubernetes cluster, used by some resources such as the Horizontal Pod Autoscaler. (required for kubedashboard metrics) Kube-dashboard - A general purpose web based UI for kubernetes. # Slide 22 Networking # Networking - Fundamental Rules All Pods can communicate with all other Pods without NAT All nodes can communicate with all Pods (and vice-versa) without NAT. The IP that a Pod sees itself as is the same IP that others see it as.",
+           "page": null,
+           "heading": "Container Runtime"
+          },
+          {
+           "source": "pods_autoscale.html",
+           "score": 0.0001,
+           "text": "## HPA vs. VPA: Which One to Use? Choosing between HPA and VPA depends on your application’s requirements: HPA is ideal for stateless applications that can easily scale horizontally by adding more pods. It’s useful when you need to handle variable workloads and ensure high availability. VPA is suitable for applications where scaling horizontally is not feasible or when you need to optimize resource usage for individual pods. It’s beneficial for stateful applications or those with varying resource needs. ... ## Conclusion Kubernetes autoscaling, through HPA and VPA, provides robust mechanisms to manage application scalability and resource optimization. By understanding and implementing these autoscaling strategies, you can ensure that your applications are resilient, performant, and cost-effective. ...",
+           "page": null,
+           "heading": "⎈ A Hands-On Guide to Kubernetes Horizontal & Vertical Pod Autoscalers 🛠️ > HPA vs. VPA: Which One to Use?"
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 2,
+         "score": 0.0027,
+         "threshold": 0.05,
+         "verdict": "poor",
+         "next": "give up (nothing relevant enough)"
+        },
+        {
+         "step": "decline",
+         "reason": "poor retrieval after 2 iterations"
+        }
+       ],
+       "total_ms": 3056,
+       "llm_calls": 3
+      },
+      "answer": "I couldn't find relevant information in the knowledge base to answer that question.",
+      "session_id": "cap-tenants-a-0",
+      "sources": [],
+      "thought_process": [
+       "Input guardrail: passed",
+       "Search: What is the Data Plane Development Kit (DPDK) used for?",
+       "Retrieval #1: 5 chunks, top score 0.001 (dropped 0, neutralized 0)",
+       "Rewrote query: Data Plane Development Kit (DPDK) purpose and use cases in high‑performance networking.",
+       "Retrieval #2: 5 chunks, top score 0.003 (dropped 0, neutralized 0)",
+       "No context (poor retrieval after 2 iterations)"
+      ],
+      "status": "No relevant context.",
+      "blocked": false,
+      "cache_hit": false,
+      "iterations": 2
+     }
+    },
+    {
+     "label": "Tenant B · networking papers",
+     "question": "What is the Data Plane Development Kit (DPDK) used for?",
+     "response": {
+      "trace": {
+       "steps": [
+        {
+         "step": "guardrail",
+         "blocked": false,
+         "rail": null,
+         "layer": "model rail (topic + jailbreak classifier)",
+         "ms": 189,
+         "llm_calls": 1
+        },
+        {
+         "step": "telemetry_redaction",
+         "applied": false,
+         "labels": {},
+         "logged_as": "What is the Data Plane Development Kit (DPDK) used for?"
+        },
+        {
+         "step": "plan",
+         "intent": "search",
+         "original": "What is the Data Plane Development Kit (DPDK) used for?",
+         "rewritten": "What is the Data Plane Development Kit (DPDK) used for?",
+         "standalone": true,
+         "has_history": false,
+         "cache_hit": false,
+         "degraded": false,
+         "ms": 549,
+         "llm_calls": 1
+        },
+        {
+         "step": "semantic_cache",
+         "hit": false,
+         "skipped": false,
+         "ms": 8
+        },
+        {
+         "step": "retrieval",
+         "iteration": 1,
+         "query": "What is the Data Plane Development Kit (DPDK) used for?",
+         "embed_ms": 1,
+         "search_ms": 7,
+         "rerank_ms": 165,
+         "ms": 173,
+         "kept": 5,
+         "dropped": 0,
+         "neutralized": 0,
+         "dense": [
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.7709,
+           "snippet": "A Look at Intel’s Dataplane Development Kit Dominik Scholz Supervisors: Daniel Raumer, Florian Wohlfart Semina"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.7447,
+           "snippet": "with or without non-uniform memory access (NUMA), with no lim- its to the number of cores or processors. The D"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.7408,
+           "snippet": "for high-speed packet processing using commodity hardware [24, 25, 26]. These frameworks replace or extend con"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.736,
+           "snippet": "[8]. The DPDK also includes poll mode drivers for 1 Gbit/s and 10 Gbit/s network cards and several other emula"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.7248,
+           "snippet": "basic function- alities of the Intel Dataplane Development Kit have been explained in detail. Furthermore, thi"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.7228,
+           "snippet": "[10]. 4. OTHER FRAMEWORKS As discussed in chapter 3 the Intel DPDK is a framework to speed up packet processin"
+          }
+         ],
+         "bm25": [
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 20.8209,
+           "snippet": "basic function- alities of the Intel Dataplane Development Kit have been explained in detail. Furthermore, thi"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 19.5348,
+           "snippet": "to be allocated and later on, when the packet has been passed to user-level or has been transmitted, deallocat"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 15.9382,
+           "snippet": "[8]. The DPDK also includes poll mode drivers for 1 Gbit/s and 10 Gbit/s network cards and several other emula"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 14.8492,
+           "snippet": "that may lead to reduced performance caused by excessive context switching. One general problem of packet proc"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 13.1634,
+           "snippet": "for high-speed packet processing using commodity hardware [24, 25, 26]. These frameworks replace or extend con"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 13.0967,
+           "snippet": "cores access the ring causing a compare-and-set operation each time. To avoid having the ring as a bottleneck,"
+          }
+         ],
+         "fused": [
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.6667,
+           "snippet": "basic function- alities of the Intel Dataplane Development Kit have been explained in detail. Furthermore, thi"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.6111,
+           "snippet": "A Look at Intel’s Dataplane Development Kit Dominik Scholz Supervisors: Daniel Raumer, Florian Wohlfart Semina"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.4583,
+           "snippet": "with or without non-uniform memory access (NUMA), with no lim- its to the number of cores or processors. The D"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.45,
+           "snippet": "[8]. The DPDK also includes poll mode drivers for 1 Gbit/s and 10 Gbit/s network cards and several other emula"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.4167,
+           "snippet": "to be allocated and later on, when the packet has been passed to user-level or has been transmitted, deallocat"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.4167,
+           "snippet": "for high-speed packet processing using commodity hardware [24, 25, 26]. These frameworks replace or extend con"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.325,
+           "snippet": "that may lead to reduced performance caused by excessive context switching. One general problem of packet proc"
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.2429,
+           "snippet": "[10]. 4. OTHER FRAMEWORKS As discussed in chapter 3 the Intel DPDK is a framework to speed up packet processin"
+          }
+         ],
+         "reranked": [
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.9923,
+           "snippet": "basic function- alities of the Intel Dataplane Development Kit have been explained in detail. Furthermore, thi",
+           "fused_rank": 1
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.9896,
+           "snippet": "[8]. The DPDK also includes poll mode drivers for 1 Gbit/s and 10 Gbit/s network cards and several other emula",
+           "fused_rank": 4
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.9892,
+           "snippet": "with or without non-uniform memory access (NUMA), with no lim- its to the number of cores or processors. The D",
+           "fused_rank": 3
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.8358,
+           "snippet": "[10]. 4. OTHER FRAMEWORKS As discussed in chapter 3 the Intel DPDK is a framework to speed up packet processin",
+           "fused_rank": 8
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.7897,
+           "snippet": "that may lead to reduced performance caused by excessive context switching. One general problem of packet proc",
+           "fused_rank": 7
+          }
+         ],
+         "chunks": [
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.9923,
+           "text": "basic function- alities of the Intel Dataplane Development Kit have been explained in detail. Furthermore, this framework has been compared with two other projects, netmap and PF RING DNA, to illustrate some techniques that solve the described problems. Commodity hardware is a valid alternative to packet pro- cessing using dedicated hardware as the software is always conﬁgurable to suit the current problem in the best possi- Seminars FI / IITM SS 2014, Network Architectures and Services, August 2014 121 doi: 10.2313/NET-2014-08-1_15 ble way. Several solutions have been created over the past few years to achieve the best performance that the hard- ware allows. While the presented frameworks diﬀer in their respective implementations, they all try to resolve the core problems of existing, widely distributed packet processing solutions: per-packet allocation and deallocation, multiple memor",
+           "page": 8,
+           "heading": ""
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.9896,
+           "text": "[8]. The DPDK also includes poll mode drivers for 1 Gbit/s and 10 Gbit/s network cards and several other emulated frame- works like virtio or VMXNET3 adapter [8]. These provide APIs to directly conﬁgure the device and access the receiv- ing and transmitting queues without the need for interrupts, comparable to the NAPI drivers. Several more specialised libraries are also provided. See [8] for a full list and detailed descriptions. 3.3 Using the Dataplane Development Kit The Intel DPDK provides all its libraries by creating the Environment Abstraction Layer (EAL) [5, 7]. The EAL has access to low-level resources including hardware and mem- ory space and provides a generic programming interface that is optimized for the hardware of the system, but hides the environment speciﬁcs from the applications and libraries. The supplied services include the loading and launching of applications, re",
+           "page": 5,
+           "heading": ""
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.9892,
+           "text": "with or without non-uniform memory access (NUMA), with no lim- its to the number of cores or processors. The DPDK runs on Linux operating systems, but completely replaces the net- work stack, implementing a run-to-completion model: “all resources must be allocated prior to calling data plane ap- plications, running as execution units on logical processing cores” [8]. Furthermore, scheduling is not supported as all devices are accessed via polling. This reduces the overhead produced through interrupt processing in high-speed scenar- ios [6]. Additionally a pipeline model may be used, which exchanges messages between diﬀerent cores to perform work in stages. As shown in ﬁgure 3, the DPDK provides the libraries, which are executed completely in userspace, by creating the Environment Abstraction Layer (EAL). The EAL hides the speciﬁcs of the available soft- and hardware and provides a inter",
+           "page": 3,
+           "heading": ""
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.8358,
+           "text": "[10]. 4. OTHER FRAMEWORKS As discussed in chapter 3 the Intel DPDK is a framework to speed up packet processing by completely replacing the network stack on Unix-based operating systems and imple- menting diﬀerent techniques like buﬀer pre-allocation or a custom packet buﬀer. Other frameworks with similar pur- poses have been developed over the last few years, sharing some of the approaches used in the Intel DPDK, but also Seminars FI / IITM SS 2014, Network Architectures and Services, August 2014 119 doi: 10.2313/NET-2014-08-1_15 using diﬀerent ideas. This chapter will present two selected projects by shortly explaining the main concepts and tech- niques, without getting into the details of their respective implementations. Firstly, the netmap framework for fast packet I/O will be introduced, followed by an engine called PF RING DNA. This chapter will conclude with a compar- ison of th",
+           "page": 6,
+           "heading": ""
+          },
+          {
+           "source": "A Look at Intel's Dataplane Development Kit (2014).pdf",
+           "score": 0.7897,
+           "text": "that may lead to reduced performance caused by excessive context switching. One general problem of packet processing frameworks is that they are often limited to speciﬁc hardware and operating systems. Only if the required CPUs and NICs are present, specialised frameworks like the Intel DPDK or PF RING (DNA) can be used, whereas netmap supports a broader range. Furthermore, all frameworks provide a diﬀerent, yet libpcap-like, programming interface. Also, one has to keep in mind that only basic packet processing functions are de- livered, whereas the user has to port any application to the chosen framework ﬁrst. Example programs or libraries that provide additional functionalities are either provided by the developers themselves or have been created by communities over the past few years. Hence, one should look out for sim- ilar programs before writing an application from scratch. As we",
+           "page": 7,
+           "heading": ""
+          }
+         ]
+        },
+        {
+         "step": "grade",
+         "iteration": 1,
+         "score": 0.9923,
+         "threshold": 0.05,
+         "verdict": "good",
+         "next": "answer"
+        },
+        {
+         "step": "llm",
+         "model": "openai/gpt-oss-120b",
+         "fallback": false,
+         "cache_hit": false,
+         "tokens_in": 3899,
+         "tokens_out": 190,
+         "ms": 1004,
+         "llm_calls": 1,
+         "grounded": true,
+         "context_chunks": 5
+        },
+        {
+         "step": "output_guard",
+         "blocked": false,
+         "rail": null,
+         "ms": 557,
+         "stored_in_cache": true,
+         "llm_calls": 1
+        }
+       ],
+       "total_ms": 2360,
+       "llm_calls": 4
+      },
+      "answer": "The Data Plane Development Kit (DPDK) is a set‑up of libraries and drivers that lets applications perform **high‑speed packet processing**. It replaces the traditional Linux network stack on Unix‑like systems and provides user‑space, poll‑mode access to NICs, pre‑allocated buffers, ring‑based queues and other low‑level services so that packets can be received, processed and transmitted at line‑rate (e.g., 10 Gbit/s) without the overhead of interrupts, per‑packet memory allocation, or multiple copies. In short, DPDK is used to build fast, custom data‑plane applications such as switches, routers, firewalls, or other networking functions that require maximum throughput.",
+      "session_id": "cap-tenants-b-1",
+      "sources": [
+       "A Look at Intel's Dataplane Development Kit (2014).pdf"
+      ],
+      "thought_process": [
+       "Input guardrail: passed",
+       "Search: What is the Data Plane Development Kit (DPDK) used for?",
+       "Retrieval #1: 5 chunks, top score 0.992 (dropped 0, neutralized 0)"
+      ],
+      "status": "Response generated.",
+      "blocked": false,
+      "cache_hit": false,
+      "iterations": 1
+     }
+    }
+   ]
+  }
+ }
+}
