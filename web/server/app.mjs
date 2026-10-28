@@ -21,12 +21,13 @@ import {
   sanitizeQueryBody,
   serializeBrowserCookie,
 } from './lib.mjs';
+import { loadBenchmarks } from './benchmarks.mjs';
 import { createStaticHandler } from './static.mjs';
 
 /**
  * @typedef {import('./config.mjs').BffConfig} BffConfig
  * @typedef {(entry: Record<string, unknown>) => void} Logger
- * @typedef {{ fetch?: typeof fetch, logger?: Logger, now?: () => number }} Deps
+ * @typedef {{ fetch?: typeof fetch, logger?: Logger, now?: () => number, benchmarks?: ReturnType<typeof loadBenchmarks> }} Deps
  * @typedef {import('node:http').IncomingMessage} Req
  * @typedef {import('node:http').ServerResponse} Res
  * @typedef {import('./lib.mjs').Failure} Failure
@@ -110,6 +111,7 @@ export function createBff(config, deps = {}) {
   const queryLimiter = createRateLimiter({ limit: config.ratePerMin, windowMs: 60_000, now });
   const healthLimiter = createRateLimiter({ limit: config.healthRatePerMin, windowMs: 60_000, now });
   const serveStatic = createStaticHandler(config.staticDir);
+  const benchmarks = deps.benchmarks ?? loadBenchmarks();
   const bidCookie = cookieName({ secure: config.cookieSecure });
   /** @type {{ at: number, status: number, body: Record<string, unknown> } | null} */
   let healthCache = null;
@@ -207,7 +209,7 @@ export function createBff(config, deps = {}) {
       const upstream = await doFetch(`${config.upstreamBase}/query`, {
         method: 'POST',
         headers: buildUpstreamHeaders({ apiKey: config.apiKey, requestId: rid }),
-        body: JSON.stringify({ q: checked.value.q, session_id: sessionId }),
+        body: JSON.stringify({ q: checked.value.q, session_id: sessionId, include_trace: true }),
         signal: ac.signal,
         redirect: 'error', // never replay the API key to a redirect target
       });
@@ -308,6 +310,10 @@ export function createBff(config, deps = {}) {
     if (pathname === '/api/health') {
       if (method !== 'GET') return sendFailure(res, { status: 405, body: { error: 'Method not allowed.', code: 'method_not_allowed' } }, rid);
       return handleHealth(res, rid, ip);
+    }
+    if (pathname === '/api/benchmarks') {
+      if (method !== 'GET') return sendFailure(res, { status: 405, body: { error: 'Method not allowed.', code: 'method_not_allowed' } }, rid);
+      return sendJson(res, 200, benchmarks, { 'cache-control': 'public, max-age=300' });
     }
     if (pathname === '/api/query') {
       if (method !== 'POST') {

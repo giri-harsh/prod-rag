@@ -1,0 +1,36 @@
+{
+  "metrics": [
+    {
+      "id": "retrieval",
+      "label": "Retrieval hit@5",
+      "value": "100%",
+      "sub": "hit@1 95% · MRR 96.8% · 60 labelled questions",
+      "env": "real Gemini embeddings + BM25, default config (hybrid, k=10, rerank=on)",
+      "source": "loadtest/retrieval_eval_result.json"
+    },
+    {
+      "id": "guardrails",
+      "label": "Guardrail false-pass",
+      "value": "0%",
+      "sub": "0/70 attacks got through · 0/40 legitimate questions wrongly blocked",
+      "env": "120 labelled cases, guard model openai/gpt-oss-20b",
+      "source": "evals/guardrails_calibration_after.json"
+    },
+    {
+      "id": "throughput",
+      "label": "Load-test throughput",
+      "value": "128.6 RPS",
+      "sub": "p95 4.9 s at 500 concurrent users · 0% errors · simulated LLM, one laptop",
+      "env": "load test on one laptop with SIMULATED LLM and embeddings; real Redis, Postgres, Qdrant",
+      "source": "DOCS/12_CAPACITY.md (run 3)"
+    },
+    {
+      "id": "resilience",
+      "label": "Survives dependency outages",
+      "value": "0 restarts",
+      "sub": "Redis, Qdrant and Postgres were killed under load; /readyz recovered in ≤ 8.6 s each",
+      "env": "chaos drill against real datastores, API process never restarted",
+      "source": "evals/chaos_drill_2026-10-11.json"
+    }
+  ]
+}

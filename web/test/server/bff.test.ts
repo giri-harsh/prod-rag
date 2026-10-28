@@ -101,7 +101,8 @@ describe('POST /api/query', () => {
     const s = seen[0]!;
     expect(s.url).toBe('/query');
     expect(s.headers['x-api-key']).toBe(KEY);
-    expect(JSON.parse(s.body)).toEqual({ q: 'hello', session_id: `${browserId}-sess1` });
+    // the BFF, not the browser, asks the API for the trace
+    expect(JSON.parse(s.body)).toEqual({ q: 'hello', session_id: `${browserId}-sess1`, include_trace: true });
     expect(s.headers['x-request-id']).toMatch(/^web-/);
 
     const body = (await res.json()) as Record<string, unknown>;
@@ -126,7 +127,8 @@ describe('POST /api/query', () => {
     expect(s.headers['x-forwarded-for']).toBeUndefined();
     expect(s.headers['x-request-id']).not.toBe('spoofed');
     expect(s.headers.cookie).toBeUndefined();
-    expect(Object.keys(JSON.parse(s.body) as object).sort()).toEqual(['q', 'session_id']);
+    // only what the BFF itself sets: nothing the browser supplied (tenant_id, thread_id, include_contexts, ...) gets through
+    expect(Object.keys(JSON.parse(s.body) as object).sort()).toEqual(['include_trace', 'q', 'session_id']);
     expect(s.body).not.toContain('evil-thread');
     expect(s.body).not.toContain('other-tenant');
     expect(logs.find((l) => l.msg === 'request')?.stripped).toEqual(['thread_id', 'tenant_id', 'include_contexts', 'user_id']);

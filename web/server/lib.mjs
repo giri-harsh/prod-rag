@@ -2,6 +2,7 @@
 // Pure helpers for the BFF (no I/O, no globals except an injectable clock) so every security-relevant rule is unit-testable.
 import { randomBytes } from 'node:crypto';
 import net from 'node:net';
+import { sanitizeTrace } from './trace.mjs';
 
 /** The API's own session-id rule (app/api.py SESSION_RE). The DERIVED id must always satisfy it. */
 export const SESSION_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -296,7 +297,9 @@ export function normalizeQueryResponse(data, clientSessionId, requestId) {
   /** @param {unknown} v */
   const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 100) : []);
   const iterations = Number(d['iterations']);
+  const trace = sanitizeTrace(d['trace']);
   return {
+    ...(trace ? { trace } : {}),
     answer: d['answer'],
     session_id: clientSessionId,
     sources: strings(d['sources']),
