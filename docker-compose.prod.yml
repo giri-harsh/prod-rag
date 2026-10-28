@@ -16,6 +16,10 @@ x-prod-env: &prod-env
   DIRECT_DATABASE_URL: postgresql://rag:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/rag
   QDRANT_API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY in .env}
   TRUSTED_PROXIES: 172.28.0.0/24  # the compose network below (web, which fronts the api, lives on it)
+  # The BM25 model is baked into the image (/opt/fastembed). fastembed still asks the Hub client first, which tried to write
+  # /tmp/.cache/huggingface/token (root-owned from the build), failed and burned ~100 s in retries. A writable HF_HOME fixes it.
+  # Do NOT set HF_HUB_OFFLINE=1: fastembed then cannot resolve the baked model and silently falls back to a simple sparse encoder.
+  HF_HOME: /tmp/hf
 
 networks:
   default:
@@ -67,6 +71,8 @@ services:
   worker:
     restart: unless-stopped
     environment: *prod-env
+    healthcheck:
+      disable: true     # the image's HEALTHCHECK curls :8080/healthz, which an arq worker does not serve (it was always "unhealthy")
     mem_limit: 1536m
     logging: *logging
 

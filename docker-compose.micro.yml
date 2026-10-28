@@ -1,0 +1,64 @@
+# "micro" profile for a ~1 GB RAM VM (e.g. AWS t4g.micro: 2 vCPU, ~900 MiB + a 4 GiB swapfile). Third overlay on top of prod:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.micro.yml up -d
+# The deploy scripts add it automatically when .env has DEPLOY_PROFILE=micro. Leave DEPLOY_PROFILE empty on a big VM.
+# Everything here is a resource knob; no application code or K8s/benchmark config is involved.
+#
+# Sizing (steady state measured on the t4g.micro): api 1 worker ~130-260 MiB, qdrant ~20, postgres ~20, caddy ~15, redis ~5.
+# Limits stop a single service from starving the rest; the swapfile absorbs the start-up peak (models load once per worker).
+
+services:
+  postgres:
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=40", "-c", "work_mem=2MB",
+              "-c", "maintenance_work_mem=16MB", "-c", "effective_cache_size=96MB", "-c", "wal_buffers=1MB",
+              "-c", "max_wal_size=128MB"]
+    mem_limit: 192m
+    mem_reservation: 64m
+
+  pgbouncer:             # pool sized to postgres max_connections above (api pool 5 + migrate/admin headroom)
+    environment:
+      DEFAULT_POOL_SIZE: "5"
+      MAX_CLIENT_CONN: "100"
+    mem_limit: 32m
+
+  redis:
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "48mb", "--maxmemory-policy", "allkeys-lru"]
+    mem_limit: 96m
+
+  qdrant:
+    environment:
+      QDRANT__STORAGE__ON_DISK_PAYLOAD: "true"
+      QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS: "1"
+      QDRANT__STORAGE__PERFORMANCE__MAX_OPTIMIZATION_THREADS: "1"
+      QDRANT__STORAGE__OPTIMIZERS__DEFAULT_SEGMENT_NUMBER: "1"
+      QDRANT__STORAGE__OPTIMIZERS__MEMMAP_THRESHOLD_KB: "1000"
+    mem_limit: 192m
+    mem_reservation: 64m
+
+  migrate:
+    environment:
+      WEB_CONCURRENCY: "1"
+
+  api:
+    environment:
+      WEB_CONCURRENCY: "1"     # one gunicorn worker: each one loads the guardrails + BM25 + reranker models
+      PG_POOL_MAX: "5"
+    healthcheck:               # a cold start on swap takes ~2 min; the image's default gives up after ~85 s
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 300s
+    mem_limit: 560m
+    mem_reservation: 256m
+
+  worker:                      # arq worker: only needed for the POST /ingest endpoint; the demo ingests with the CLI
+    scale: ${WORKER_SCALE:-0}  # set WORKER_SCALE=1 in .env to run it (~150 MiB)
+    mem_limit: 256m
+
+  web:
+    environment:
+      NODE_OPTIONS: --max-old-space-size=80
+    mem_limit: 128m
+
+  caddy:
+    mem_limit: 64m

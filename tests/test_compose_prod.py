@@ -162,8 +162,82 @@ def test_caddy_mounts_and_proxy():
     assert "Strict-Transport-Security" in caddyfile
 
 
+def test_worker_healthcheck_is_disabled_in_prod(merged):
+    """The image HEALTHCHECK curls :8080, which an arq worker does not serve; it would be 'unhealthy' forever."""
+    assert merged["services"]["worker"]["healthcheck"] == {"disable": True}
+
+
+def test_hub_client_cache_is_writable_but_not_offline(merged):
+    env = merged["services"]["api"]["environment"]
+    assert env["HF_HOME"].startswith("/tmp/")  # writable by the non-root app user (a root-owned token path cost ~100 s)
+    # HF_HUB_OFFLINE=1 makes fastembed fail to resolve the baked Qdrant/bm25 model and silently use a worse encoder
+    assert "HF_HUB_OFFLINE" not in env
+
+
+# ── micro profile (docker-compose.micro.yml) ──────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def micro(base, overlay):
+    return _merge(_merge(base, overlay), _load("docker-compose.micro.yml"))
+
+
+def _mem_mib(v) -> int:
+    s = str(v).lower()
+    return int(s[:-1]) * (1024 if s.endswith("g") else 1) if s[-1] in "gm" else int(s) // (1024 * 1024)
+
+
+def test_micro_has_no_published_ports_except_caddy(micro):
+    for name, svc in micro["services"].items():
+        assert bool(svc.get("ports")) == (name == "caddy"), name
+
+
+def test_micro_single_worker_with_a_cold_start_tolerant_healthcheck(micro):
+    api = micro["services"]["api"]
+    assert api["environment"]["WEB_CONCURRENCY"] == "1"
+    hc = api["healthcheck"]
+    assert int(hc["start_period"].rstrip("s")) >= 240
+    assert hc["retries"] >= 5
+
+
+def test_micro_memory_limits_fit_a_small_host(micro):
+    limits = {n: _mem_mib(s["mem_limit"]) for n, s in micro["services"].items() if "mem_limit" in s}
+    for name in ("postgres", "redis", "qdrant", "pgbouncer", "api", "web", "caddy"):
+        assert name in limits, f"{name} has no mem_limit"
+    assert limits["api"] <= 600 and limits["postgres"] <= 256 and limits["qdrant"] <= 256 and limits["redis"] <= 128
+    # the always-on set must fit the ~900 MiB host together with the OS once usage (not limits) is added up;
+    # limits are allowed to oversubscribe a little (swap), but not by an order of magnitude
+    assert sum(v for n, v in limits.items() if n != "worker") <= 1400  # the worker is scaled to 0 by default
+    for name, svc in micro["services"].items():
+        if "mem_reservation" in svc:
+            assert _mem_mib(svc["mem_reservation"]) <= limits[name], name
+
+
+def test_micro_datastores_are_tuned_down(micro):
+    pg = micro["services"]["postgres"]["command"]
+    assert "max_connections=40" in pg and "shared_buffers=32MB" in pg
+    pool = int(micro["services"]["pgbouncer"]["environment"]["DEFAULT_POOL_SIZE"])
+    assert pool + 10 <= 40, "pgbouncer pool plus migrate/admin headroom must fit postgres max_connections"
+    redis = micro["services"]["redis"]["command"]
+    assert "--maxmemory" in redis and redis[redis.index("--maxmemory-policy") + 1] == "allkeys-lru"
+    q = micro["services"]["qdrant"]["environment"]
+    assert q["QDRANT__STORAGE__ON_DISK_PAYLOAD"] == "true"
+    assert "${QDRANT_API_KEY" in q["QDRANT__SERVICE__API_KEY"]  # still authenticated
+
+
+def test_micro_worker_is_off_by_default_and_configurable(micro):
+    assert micro["services"]["worker"]["scale"] == "${WORKER_SCALE:-0}"
+
+
+def test_deploy_scripts_select_the_micro_overlay():
+    helper = (ROOT / "scripts" / "deploy" / "compose_env.sh").read_text(encoding="utf-8")
+    assert "docker-compose.micro.yml" in helper and "DEPLOY_PROFILE" in helper
+    for name in ("bootstrap_vm.sh", "update.sh", "verify_on_vm.sh"):
+        assert "compose_env.sh" in (ROOT / "scripts" / "deploy" / name).read_text(encoding="utf-8"), name
+
+
 def test_every_compose_var_is_in_env_example(base, overlay):
-    text = (ROOT / "docker-compose.yml").read_text(encoding="utf-8") + (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
+    text = "".join((ROOT / n).read_text(encoding="utf-8")
+                   for n in ("docker-compose.yml", "docker-compose.prod.yml", "docker-compose.micro.yml"))
     used = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)", text))
     example = (ROOT / ".env.example").read_text(encoding="utf-8")
     declared = set(re.findall(r"^\s*#?\s*([A-Z][A-Z0-9_]*)=", example, flags=re.M))
