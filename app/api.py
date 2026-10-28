@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import re
 import sys
+import time
 import uuid
 from contextvars import ContextVar
 from pathlib import Path
@@ -90,6 +91,7 @@ class QueryRequest(BaseModel):
     session_id: str = "default"
     tenant_id: str | None = None  # optional assertion; must equal the key's tenant
     include_contexts: bool = False  # chunk texts in the response; requires the "eval" key scope
+    include_trace: bool = False  # per-stage explanation of this request (tenant's own data only; no prompts, keys or configs)
 
 
 class IngestRequest(BaseModel):
@@ -360,13 +362,15 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         # durability="exit": one checkpoint write per request instead of one per node (load test: the per-step
         # writes through the saver's single connection lock were the first bottleneck)
         cfg = {"configurable": {"thread_id": thread_id, "tenant_id": p.tenant_id}}
+        graph_in = {"messages": [{"role": "user", "content": q}], "want_trace": bool(body.include_trace)}
+        t_req = time.perf_counter()
         if ls_client is not None:
             from langsmith import tracing_context
 
             with tracing_context(client=ls_client, enabled=True):
-                out = await svc.graph.ainvoke({"messages": [{"role": "user", "content": q}]}, config=cfg, durability="exit")
+                out = await svc.graph.ainvoke(graph_in, config=cfg, durability="exit")
         else:
-            out = await svc.graph.ainvoke({"messages": [{"role": "user", "content": q}]}, config=cfg, durability="exit")
+            out = await svc.graph.ainvoke(graph_in, config=cfg, durability="exit")
         if not out.get("output_checked"):  # defence in depth: never return an unchecked answer
             raise AppError("output guard did not run")
         resp = {
@@ -381,6 +385,10 @@ def create_app(settings: Settings | None = None, overrides: dict | None = None) 
         }
         if body.include_contexts:
             resp["contexts"] = out.get("documents", [])
+        if body.include_trace:
+            steps = list(out.get("trace") or [])
+            resp["trace"] = {"steps": steps, "total_ms": round((time.perf_counter() - t_req) * 1000),
+                             "llm_calls": sum(int(s.get("llm_calls") or 0) for s in steps)}
         return resp
 
     @app.post("/ingest", status_code=202)

@@ -22,3 +22,7 @@ class AgentState(TypedDict, total=False):
     standalone: bool
     cache_hit: bool
     cache_query: str | None
+    # Per-request explanation of what each stage did (see graph.py). Replaced, not appended, every turn: the checkpoint
+    # keeps one thread's state across turns and a trace must describe only the current request.
+    trace: list[dict]
+    want_trace: bool  # also compute the extra retrieval views (dense-only / sparse-only lists) that cost two more Qdrant calls

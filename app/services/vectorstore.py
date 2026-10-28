@@ -1,6 +1,7 @@
 """Qdrant access: blue/green collections behind an alias, tenant-filtered search, config metadata."""
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from dataclasses import dataclass
@@ -204,6 +205,24 @@ class VectorStore:
             for p in resp.points
             if p.payload and p.payload.get("tenant_id") == tenant_id  # defence in depth
         ]
+
+    async def search_branches(self, tenant_id: str, dense: list[float], sparse: models.SparseVector,
+                              limit: int) -> tuple[list[Hit], list[Hit]]:
+        """The two lists RRF fuses, each on its own (dense-only, sparse-only). Only for the explain-this-answer trace."""
+        flt = models.Filter(must=[models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id))])
+
+        async def one(vec, using):
+            resp = await self._q(lambda: self.client.query_points(
+                collection_name=self.alias, query=vec, using=using, query_filter=flt, limit=limit, with_payload=True))
+            return [Hit(p.payload.get("text", ""), p.payload.get("source", "unknown"), p.score,
+                        p.payload.get("page"), p.payload.get("heading_path", ""))
+                    for p in resp.points if p.payload and p.payload.get("tenant_id") == tenant_id]
+
+        try:
+            return await asyncio.gather(one(dense, "dense"), one(sparse, "sparse"))
+        except Exception as e:
+            logfire.warn("branch search for the trace failed", error=str(e))
+            return [], []
 
     async def ping(self) -> None:
         await self.client.get_collections()

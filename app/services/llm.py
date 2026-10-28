@@ -17,6 +17,8 @@ class LLMResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cache_hit: bool = False
+    model: str = ""         # the model that actually answered (empty when the gateway hides it)
+    fallback: bool = False  # answered by a fallback target (second key or the cheaper model) instead of the first choice
 
 
 class ChatLLM(Protocol):
@@ -118,12 +120,13 @@ class GroqDirectLLM:
             models.append(self._s.llm_fallback_model)  # provider limits are per model: the cheaper model has its own budget
         targets = [(c, m) for m in models for c in self._clients]  # every key on the primary model first, then the cheaper model
         used = models[0]  # the model that actually answered (failover may move off models[0]); used in the error below
+        used_i = 0
 
         async def _call():
-            nonlocal used
+            nonlocal used, used_i
             for i, (client, m) in enumerate(targets):
                 try:
-                    used = m
+                    used, used_i = m, i
                     return await client.chat.completions.create(**self._kwargs(m, msgs, temperature, feature))
                 except Exception as e:
                     if i == len(targets) - 1 or not failover_worthy(e):
@@ -146,7 +149,7 @@ class GroqDirectLLM:
             why = getattr(choice, "finish_reason", None)
             hint = f"raise LLM_MAX_TOKENS (now {min(FEATURE_MAX_TOKENS.get(feature, self._s.llm_max_tokens), self._s.llm_max_tokens)})" if why == "length" else "the model returned no content for this input"
             raise ValueError(f"empty completion from {used} for feature {feature!r} (finish_reason={why}); {hint}")
-        return LLMResult(text, pt, ct)
+        return LLMResult(text, pt, ct, model=used, fallback=used_i > 0)
 
 
 def make_llm(s: Settings, breakers: Breakers):

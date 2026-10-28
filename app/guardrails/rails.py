@@ -36,6 +36,9 @@ _SECRET_PATTERNS = [
 ]
 
 
+DETERMINISTIC_OUTPUT_RAILS = frozenset(name for name, _ in _SECRET_PATTERNS)  # blocks that need no model call
+
+
 def deterministic_output_screen(text: str) -> GuardResult:
     for name, rx in _SECRET_PATTERNS:
         if rx.search(text):
@@ -229,13 +232,20 @@ class Guardrails:
             return GuardResult(True, stopped[0].name, REFUSAL if rail_type == "input" else OUTPUT_REFUSAL)
         return GuardResult(False)
 
+    def deterministic_input(self, text: str) -> GuardResult | None:
+        """The regex layer of the input rail on its own: a block here needs no model call, so callers can skip every
+        LLM call (the planner included) for an attack it recognises. None = not recognised, run the model rail."""
+        if (hit := screen_user_input(text)) is not None:
+            GUARDRAIL_BLOCKS.labels("input", hit).inc()
+            return GuardResult(True, hit, REFUSAL)
+        return None
+
     async def check_input(self, text: str, domain: str | None = None) -> GuardResult:
         domain = (domain or self._s.assistant_domain).replace("\n", " ")[:300]
         # Deterministic first: the guard model misses prompt extraction phrased as a formatting request, and an
         # attack that matches a regex needs no Groq call at all. Patterns are user-channel-only (see injection.py).
-        if (hit := screen_user_input(text)) is not None:
-            GUARDRAIL_BLOCKS.labels("input", hit).inc()
-            return GuardResult(True, hit, REFUSAL)
+        if (pre := self.deterministic_input(text)) is not None:
+            return pre
         r = await self._run([{"role": "user", "content": f"[ASSISTANT DOMAIN: {domain}]\n{text}"}], "input")
         if r.blocked:
             GUARDRAIL_BLOCKS.labels("input", r.rail or "unknown").inc()
