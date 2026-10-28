@@ -32,13 +32,16 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER" || true   # takes effect on next login; this script uses sudo docker
 sudo docker compose version
 
-step "Firewall (ufw 22/80/443)"
-sudo apt-get install -y ufw >/dev/null
-sudo ufw allow 22/tcp >/dev/null
-sudo ufw allow 80/tcp >/dev/null
-sudo ufw allow 443/tcp >/dev/null
-sudo ufw --force enable >/dev/null
-sudo ufw status | head -8
+step "Firewall (ufw)"
+# Oracle images ship with ufw disabled and rely on iptables (next step). Only touch ufw if it is already active.
+if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q '^Status: active'; then
+  sudo ufw allow 22/tcp >/dev/null
+  sudo ufw allow 80/tcp >/dev/null
+  sudo ufw allow 443/tcp >/dev/null
+  sudo ufw status | head -8
+else
+  echo "ufw is not active - leaving it disabled (iptables rules below handle 80/443)"
+fi
 
 step "Oracle Cloud iptables"
 # Oracle's Ubuntu images ship iptables rules ending in REJECT icmp-host-prohibited; insert ACCEPT for 80/443 before it and persist.
@@ -95,6 +98,10 @@ printf '%s' "$(env_val POSTGRES_PASSWORD)" | grep -Eq '^[A-Za-z0-9_.~-]+$' || fa
 step "Build and start"
 $DC config -q || fail "compose config invalid"
 $DC up -d --build
+# migrate is a one-shot service the api waits for (it uses DIRECT_DATABASE_URL, not pgbouncer); make a failure explicit
+mig=$($DC ps -a migrate --format '{{.State}} exit={{.ExitCode}}' | head -1)
+echo "migrate: $mig"
+case "$mig" in *"exit=0"*) ;; *) $DC logs --tail 30 migrate; fail "migrate did not finish cleanly" ;; esac
 
 step "Waiting for api to be healthy (up to 10 min)"
 for i in $(seq 1 120); do

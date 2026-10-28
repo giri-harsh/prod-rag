@@ -125,6 +125,22 @@ def test_no_hardcoded_passwords_in_prod(merged):
     assert "${QDRANT_API_KEY" in merged["services"]["qdrant"]["environment"]["QDRANT__SERVICE__API_KEY"]
 
 
+def test_overlay_has_no_hardcoded_rag_credentials():
+    text = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
+    assert "rag:rag" not in text
+    assert "DB_PASSWORD: rag" not in text and "POSTGRES_PASSWORD: rag" not in text
+
+
+def test_every_service_environment_is_fully_resolved_after_merge(merged):
+    """The overlay overrides env on top of the base `<<: *app-env` anchor; the MERGED block must be complete."""
+    for name in ("api", "worker", "migrate"):
+        env = merged["services"][name]["environment"]
+        for key in ("APP_ENV", "DATABASE_URL", "DIRECT_DATABASE_URL", "REDIS_URL", "QDRANT_URL", "QDRANT_API_KEY",
+                    "GROQ_API_KEY", "GEMINI_API_KEY", "LLM_PRIMARY_MODEL", "TRUSTED_PROXIES"):
+            assert key in env, f"{name} lost {key} in the merge"
+    assert merged["services"]["api"]["environment"]["LLM_PRIMARY_MODEL"].endswith("openai/gpt-oss-120b}")
+
+
 def test_trusted_proxies_match_network_subnet(overlay, merged):
     subnet = overlay["networks"]["default"]["ipam"]["config"][0]["subnet"]
     assert merged["services"]["api"]["environment"]["TRUSTED_PROXIES"] == subnet

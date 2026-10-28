@@ -118,7 +118,7 @@ step "Host"
 free -h; df -h / | tail -2
 
 echo
-echo "=== REPORT FROM VM ==="
+echo "=== VM REPORT FOR BRAIN ==="
 echo "arch: ${R[arch]}   (native build here => arm64 check PASS if arch=aarch64)"
 echo "image sizes: api ${R[api_image]} | web ${R[web_image]}"
 echo "readyz: ${R[readyz]}   migrate: ${R[migrate]}   web: ${R[web]}   tls: ${R[tls]}"

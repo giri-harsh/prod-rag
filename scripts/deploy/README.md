@@ -23,7 +23,7 @@ Check with `nslookup rag.harshgiri.site` before the first HTTPS request (Let's E
 .\scripts\deploy\push_to_vm.ps1 -VmHost <VM_IP> -KeyPath C:\path\to\oracle.key
 ```
 Uploads the code tar, `.env` and `DATA/true_data`, then runs `bootstrap_vm.sh` on the VM: installs Docker Engine + compose plugin,
-opens ufw 22/80/443, fixes Oracle's iptables REJECT rule (persisted), creates a 4G swapfile, builds the images,
+fixes Oracle's iptables REJECT rule for 80/443 (persisted; ufw is left alone unless it is already active), creates a 4G swapfile, builds the images,
 starts both compose files, waits for `api` to be healthy, installs the nightly backup cron. Safe to re-run.
 
 ## 4. Verify and create the tenant (VM)
@@ -32,7 +32,7 @@ ssh -i <key> ubuntu@<VM_IP> 'bash ~/prod_rag/scripts/deploy/verify_on_vm.sh'
 ```
 Creates tenant `demo` (domain "Kubernetes and networking") with admin/user/eval keys (kept in `~/prod_rag/.keys.env`, mode 600),
 sets the user key as `BFF_RAG_API_KEY` and restarts web, ingests `DATA/true_data`, queries through `https://rag.harshgiri.site`,
-runs `verify_live`, a 3-user/2-minute locust run and prints `=== REPORT FROM VM ===` (image sizes, stats, 429 count).
+runs `verify_live`, a 3-user/2-minute locust run and prints `=== VM REPORT FOR BRAIN ===` (image sizes, stats, 429 count).
 Groq free tier is 30 RPM / 8K TPM per model: 429s under load are expected.
 
 Then open <https://rag.harshgiri.site>.
