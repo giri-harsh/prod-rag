@@ -1,9 +1,10 @@
 import type { ChatMessage } from '../state/chat';
 import { CopyButton } from './CopyButton';
 import { SourcesPanel } from './SourcesPanel';
+import { TracePanel } from './TracePanel';
 
 /** Answers are rendered as plain text (pre-wrap): nothing from the model is ever interpreted as HTML. */
-export function MessageItem({ message }: { message: ChatMessage }) {
+export function MessageItem({ message, showTrace = true }: { message: ChatMessage; showTrace?: boolean }) {
   if (message.role === 'user') {
     return (
       <article className="msg msg-user" data-testid="message-user">
@@ -41,6 +42,7 @@ export function MessageItem({ message }: { message: ChatMessage }) {
         <CopyButton text={message.text} label="Copy answer" />
       </div>
       {a && <SourcesPanel answer={a} />}
+      {a?.trace && showTrace && <TracePanel trace={a.trace} />}
     </article>
   );
 }

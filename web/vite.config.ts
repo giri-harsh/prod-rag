@@ -13,7 +13,7 @@ export default defineConfig({
     proxy: { '/api': bff, '/healthz': bff },
   },
   test: {
-    include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'test/**/*.test.ts'],
     environment: 'node',
     restoreMocks: true,
   },

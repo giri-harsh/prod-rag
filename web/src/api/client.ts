@@ -1,4 +1,6 @@
 import { ApiError, kindForStatus, parseRetryAfter } from './errors';
+import { parseTrace } from './trace';
+import type { Trace } from './trace';
 
 /** Mirrors MAX_QUERY_CHARS of the API (default 4000); the API stays the authority. */
 export const MAX_QUERY_CHARS = 4000;
@@ -17,6 +19,8 @@ export interface QueryAnswer {
   cacheHit: boolean;
   iterations: number;
   requestId: string | null;
+  /** Per-stage explanation of this answer; null when the server sent none. */
+  trace: Trace | null;
 }
 
 export interface SendOptions {
@@ -50,6 +54,7 @@ export function parseAnswer(data: unknown): QueryAnswer {
     cacheHit: data.cache_hit === true,
     iterations: typeof iterations === 'number' && Number.isFinite(iterations) ? iterations : 0,
     requestId: typeof data.request_id === 'string' ? data.request_id : null,
+    trace: parseTrace(data.trace),
   };
 }
 
