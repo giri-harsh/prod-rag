@@ -14,12 +14,12 @@ vs RRF vs reranked lists, the grader and any rewrite loop, the model and tokens,
 
 | | |
 |---|---|
-| ![Landing page, desktop](docs/screenshots/desktop-landing.png) | ![Landing page, mobile](docs/screenshots/mobile-landing.png) |
-| ![Request-flow diagram, lit along the real path](docs/screenshots/desktop-diagram-lit.png) | ![A jailbreak stopped by the pattern screen with zero AI calls](docs/screenshots/desktop-live-jailbreak.png) |
+| ![Landing page, desktop](DOCS/screenshots/desktop-landing.png) | ![Landing page, mobile](DOCS/screenshots/mobile-landing.png) |
+| ![Request-flow diagram, lit along the real path](DOCS/screenshots/desktop-diagram-lit.png) | ![A jailbreak stopped by the pattern screen with zero AI calls](DOCS/screenshots/desktop-live-jailbreak.png) |
 
-![Under the hood: an exact-term question, desktop](docs/screenshots/desktop-trace.png)
+![Under the hood: an exact-term question, desktop](DOCS/screenshots/desktop-trace.png)
 
-![Two tenants, same question, different documents](docs/screenshots/desktop-tenants.png)
+![Two tenants, same question, different documents](DOCS/screenshots/desktop-tenants.png)
 
 Honest notes: the recorded scenarios were captured from the real pipeline (real Groq, Gemini, Qdrant, Postgres) and are served as static data, so
 they cost no quota; only the jailbreak scenario runs live because it is stopped before any model call. The headline cards come from the repo's
