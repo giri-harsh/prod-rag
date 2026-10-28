@@ -29,6 +29,11 @@ async function run(label, viewport, isMobile) {
   await page.getByTestId('chip-tenants').click();
   await page.getByTestId('showcase').waitFor();
   await page.getByTestId('showcase').screenshot({ path: path.join(out, `${label}-tenants.png`) });
+  // the one live scenario: stopped by the pattern screen, so it spends no model quota
+  await page.getByTestId('chip-jailbreak').click();
+  await page.getByTestId('trace-summary').waitFor();
+  await page.getByText('with zero AI calls').waitFor();
+  await page.getByTestId('showcase').screenshot({ path: path.join(out, `${label}-live-jailbreak.png`) });
   await ctx.close();
 }
 

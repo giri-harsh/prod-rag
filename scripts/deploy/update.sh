@@ -31,4 +31,11 @@ fi
 [ "${1:-}" != --cron-only ] || exit 0
 sleep 5
 $DC ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
-$DC exec -T api curl -fsS http://127.0.0.1:8080/readyz && echo
+# /readyz can answer 503 for a few seconds right after the api restarts (guardrails and pools warming); wait for it instead of failing
+for i in $(seq 1 24); do
+  if $DC exec -T api curl -fsS http://127.0.0.1:8080/readyz >/dev/null 2>&1; then echo "readyz: ready"; exit 0; fi
+  sleep 5
+done
+echo "update FAILED: /readyz is still not ready after 2 minutes" >&2
+$DC logs --tail 30 api >&2
+exit 1

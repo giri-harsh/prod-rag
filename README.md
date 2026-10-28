@@ -5,6 +5,27 @@ guardrails (fail-closed), indirect-injection screening, **hybrid search** (dense
 rerank), a **self-correcting cyclic graph**, Redis rate limits and caches, a semantic answer cache, arq ingestion workers with a
 coordinated blue/green rebuild, Prometheus metrics (internal port) and PII-redacted Logfire/LangSmith telemetry.
 
+## Live demo
+
+**https://rag.harshgiri.site**: a landing page that shows the system working instead of describing it. Pick a scenario (cited answer,
+exact-term search, follow-up rewrite, "not in the docs", jailbreak, off-topic, personal data, two tenants) and watch the request-flow diagram
+light up along the real path; the **Under the hood** panel under every answer shows the guardrail verdict, the rewritten query, the dense vs BM25
+vs RRF vs reranked lists, the grader and any rewrite loop, the model and tokens, a latency waterfall and the exact cited passages.
+
+| | |
+|---|---|
+| ![Landing page, desktop](docs/screenshots/desktop-landing.png) | ![Landing page, mobile](docs/screenshots/mobile-landing.png) |
+| ![Request-flow diagram, lit along the real path](docs/screenshots/desktop-diagram-lit.png) | ![A jailbreak stopped by the pattern screen with zero AI calls](docs/screenshots/desktop-live-jailbreak.png) |
+
+![Under the hood: an exact-term question, desktop](docs/screenshots/desktop-trace.png)
+
+![Two tenants, same question, different documents](docs/screenshots/desktop-tenants.png)
+
+Honest notes: the recorded scenarios were captured from the real pipeline (real Groq, Gemini, Qdrant, Postgres) and are served as static data, so
+they cost no quota; only the jailbreak scenario runs live because it is stopped before any model call. The headline cards come from the repo's
+own result files (`scripts/build_benchmarks.py`); the throughput figure is a laptop load test with a *simulated* LLM. Mobile Lighthouse on the
+deployed page: performance 98, accessibility 100, best practices 100, SEO 100. Details: `DOCS/17_WEB_CLIENT.md` section 4a.
+
 ## What it is (and is not)
 - The agent is a **LangGraph graph with a real cycle**: `retrieve -> grade -> rewrite_query -> retrieve` (max 2 retrievals,
   graded by the reranker score; the LLM is used only for the rewrite). Exhaustion returns a fixed "no relevant context" answer.
