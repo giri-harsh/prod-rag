@@ -5,7 +5,6 @@
 # Re-running is safe: Docker/ufw/swap steps are skipped when already done, an existing .env is kept.
 set -euo pipefail
 APP_DIR="${APP_DIR:-$HOME/prod_rag}"
-DC="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 fail() { echo "bootstrap FAILED: $1" >&2; exit 1; }
 step() { echo; echo "==> $1"; }
 
@@ -87,6 +86,8 @@ cd "$APP_DIR"
 [ -f .env ] || fail ".env missing in $APP_DIR. Create it from .env.example (or re-run push_to_vm.ps1 -ReplaceEnv)"
 [ -d DATA/true_data ] || echo "warning: DATA/true_data missing - ingestion in verify_on_vm.sh will fail"
 
+. scripts/deploy/compose_env.sh   # sets DC and DEPLOY_PROFILE (micro adds docker-compose.micro.yml)
+echo "deploy profile: ${DEPLOY_PROFILE:-full}"
 env_val() { grep -E "^[[:space:]]*$1[[:space:]]*=" .env | tail -1 | sed -E "s/^[^=]*=//; s/[[:space:]]+#.*$//; s/^[[:space:]\"']+//; s/[[:space:]\"']+$//"; }
 missing=""
 for k in GROQ_API_KEY GEMINI_API_KEY POSTGRES_PASSWORD QDRANT_API_KEY SITE_DOMAIN; do

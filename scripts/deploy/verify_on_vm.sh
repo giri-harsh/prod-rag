@@ -7,7 +7,7 @@
 set -uo pipefail
 APP_DIR="${APP_DIR:-$HOME/prod_rag}"
 cd "$APP_DIR" || { echo "no $APP_DIR" >&2; exit 1; }
-DC="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+. scripts/deploy/compose_env.sh   # sets DC and DEPLOY_PROFILE
 PROJ=$(basename "$APP_DIR" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9_-')
 NET="${PROJ}_default"
 OUT="$APP_DIR/verify_out"; mkdir -p "$OUT"; chmod 777 "$OUT"
@@ -23,6 +23,10 @@ set_env() {  # set_env KEY VALUE : replace or append in .env without printing th
 [ -f .env ] || fail ".env missing"
 SITE_DOMAIN=$(env_val SITE_DOMAIN); SITE_DOMAIN=${SITE_DOMAIN:-localhost}
 declare -A R
+# The micro profile (1 GB VM) skips the parts that spend many real LLM calls or need pip/locust containers; force with RUN_LIVE=1 RUN_LOAD=1.
+RUN_LIVE="${RUN_LIVE:-$([ "$DEPLOY_PROFILE" = micro ] && echo 0 || echo 1)}"
+RUN_LOAD="${RUN_LOAD:-$RUN_LIVE}"
+echo "profile: ${DEPLOY_PROFILE:-full}  run_live=$RUN_LIVE run_load=$RUN_LOAD"
 
 step "Images"
 R[api_image]=$(sudo docker image ls prod-rag:local --format '{{.Size}}')
@@ -64,9 +68,9 @@ R[web]=$($DC ps web --format '{{.State}}/{{.Health}}' | head -1)
 echo "web: ${R[web]}"
 
 step "Ingest DATA/true_data"
-if ! $DC exec -T api python -m app.ingestion.cli /data/true_data --tenant demo --source-type true >"$OUT/ingest.log" 2>&1; then
+if ! $DC run --rm --no-deps -T api python -m app.ingestion.cli /data/true_data --tenant demo --source-type true >"$OUT/ingest.log" 2>&1; then
   echo "ingest failed once; retrying with INGEST_BATCH_SIZE=16 (Gemini rate limits)"
-  $DC exec -T -e INGEST_BATCH_SIZE=16 api python -m app.ingestion.cli /data/true_data --tenant demo --source-type true >"$OUT/ingest.log" 2>&1 \
+  $DC run --rm --no-deps -T -e INGEST_BATCH_SIZE=16 api python -m app.ingestion.cli /data/true_data --tenant demo --source-type true >"$OUT/ingest.log" 2>&1 \
     || { tail -5 "$OUT/ingest.log"; R[ingest]=FAIL; }
 fi
 [ -n "${R[ingest]:-}" ] || R[ingest]=ok
@@ -81,6 +85,7 @@ printf '%s\n' "$QOUT" | head -c 700; echo
 R[tls]=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 --resolve "$SITE_DOMAIN:443:127.0.0.1" "https://$SITE_DOMAIN/healthz" 2>/dev/null && echo trusted || echo untrusted-or-pending)
 
 step "verify_live.sh (in a python:3.11 container on the compose network)"
+if [ "$RUN_LIVE" != 1 ]; then R[verify_live_rc]=skipped; echo "skipped (RUN_LIVE=0: it makes many real LLM calls)"; else
 PW=$(env_val POSTGRES_PASSWORD)
 sudo docker run --rm --network "$NET" -v "$APP_DIR:/work" -w /work -e PYTHON=python \
   -e DATABASE_URL="postgresql://rag:$PW@postgres:5432/rag" -e REDIS_URL=redis://redis:6379/0 \
@@ -90,12 +95,17 @@ R[verify_live_rc]=$?
 tail -5 "$OUT/verify_live.log"
 sudo chown -R "$USER" live_report.md live_results.json live_pytest.log 2>/dev/null || true
 if [ -f live_report.md ]; then grep -iE 'false.?block|false.?pass|failover|fallback' live_report.md | head -8; fi
+fi
 
 step "Idle docker stats"
 sleep 20
 sudo docker stats --no-stream --format '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' | tee "$OUT/stats_idle.txt"
 
 step "Locust: 3 users, 2 minutes, real models"
+if [ "$RUN_LOAD" != 1 ]; then
+  echo "skipped (RUN_LOAD=0)"; : > "$OUT/locust.log"
+  sudo docker stats --no-stream --format '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' > "$OUT/stats_peak_samples.txt"   # post-query snapshot
+else
 echo "{\"demo\": \"$USER_KEY\"}" > "$OUT/load_keys.json"; chmod 644 "$OUT/load_keys.json"
 : > "$OUT/stats_peak_samples.txt"
 ( while [ ! -f "$OUT/.locust_done" ]; do sudo docker stats --no-stream --format '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' >> "$OUT/stats_peak_samples.txt"; sleep 5; done ) &
@@ -105,6 +115,7 @@ sudo docker run --rm --network "$NET" -v "$APP_DIR/loadtest:/mnt/loadtest:ro" -v
   locustio/locust:2.32.4 -f /mnt/loadtest/locustfile.py --headless -u 3 -r 1 -t 2m --host http://api:8080 --csv /mnt/out/locust >"$OUT/locust.log" 2>&1
 touch "$OUT/.locust_done"; wait "$SAMPLER" 2>/dev/null
 tail -12 "$OUT/locust.log"
+fi
 
 # peak per container: max CPU% and max memory (MiB) over all samples
 peak=$(awk -F'\t' '
@@ -124,8 +135,8 @@ echo "image sizes: api ${R[api_image]} | web ${R[web_image]}"
 echo "readyz: ${R[readyz]}   migrate: ${R[migrate]}   web: ${R[web]}   tls: ${R[tls]}"
 echo "ingest: ${R[ingest]}   query via https://$SITE_DOMAIN: HTTP ${R[query_http]:-none}"
 echo "verify_live exit code: ${R[verify_live_rc]}  (log: $OUT/verify_live.log, report: live_report.md)"
-echo "locust (3 users, 2m): ${agg:-no stats}   429 failures: ${c429:-0}"
+echo "locust (3 users, 2m): ${agg:-skipped/no stats}   429 failures: ${c429:-0}"
 echo "-- idle (CPU, RAM)"; cat "$OUT/stats_idle.txt"
-echo "-- peak"; echo "$peak"
+echo "-- peak (post-query snapshot when load test skipped)"; echo "$peak"
 echo "-- host"; free -h | awk '/Mem:|Swap:/'; df -h / | tail -1
 echo "Copy this block (and $OUT/*.log tails) back to the brain. Keys are in $KEYS_FILE - do not paste them."

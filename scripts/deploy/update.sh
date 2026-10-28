@@ -6,8 +6,8 @@
 # Also installs the nightly database backup cron entry (idempotent).
 set -euo pipefail
 APP_DIR="${APP_DIR:-$HOME/prod_rag}"
-DC="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 cd "$APP_DIR"
+. scripts/deploy/compose_env.sh   # sets DC (adds docker-compose.micro.yml when DEPLOY_PROFILE=micro)
 if [ "${1:-}" != --cron-only ]; then
   if [ -f "$HOME/prod_rag.tar" ]; then
     tar -xf "$HOME/prod_rag.tar" -C "$APP_DIR"
